@@ -1,0 +1,70 @@
+<?php
+
+namespace App\Filament\Resources;
+
+use App\Models\User;
+use Filament\Forms;
+use Filament\Forms\Form;
+use Filament\Tables;
+use Filament\Tables\Table;
+use Filament\Resources\Resource;
+use App\Filament\Resources\UserResource\Pages;
+use Filament\Tables\Actions\EditAction;
+use Filament\Tables\Actions\DeleteBulkAction;
+
+class UserResource extends Resource
+{
+    protected static ?string $model = User::class;
+    protected static ?string $navigationIcon = 'heroicon-o-users';
+    protected static ?string $navigationGroup = 'Administration';
+
+    public static function form(Form $form): Form
+    {
+        return $form
+            ->schema([
+                Forms\Components\TextInput::make('name')->label('First Name')->required(),
+                Forms\Components\TextInput::make('password')->label('Password')->required(),
+                Forms\Components\TextInput::make('middle_name')->label('Middle Name'),
+                Forms\Components\TextInput::make('last_name')->label('Last Name')->required(),
+                Forms\Components\TextInput::make('email')
+                    ->email()
+                    ->required()
+                    ->unique(User::class, 'email', ignoreRecord: true),
+                Forms\Components\TextInput::make('phone')->label('Phone'),
+                Forms\Components\DatePicker::make('date_of_birth')->label('Date of Birth'),
+                Forms\Components\FileUpload::make('profile_photo_path')->label('Profile Photo')->image(),
+                
+                // Role assignment using Shield & Spatie
+                Forms\Components\Select::make('roles')
+                    ->label('Roles')
+                    ->relationship('roles', 'name')
+                    ->multiple()
+                    ->preload()
+                    ->searchable()
+                    ->helperText('Assign one or more roles'),
+            ]);
+    }
+
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->columns([
+                Tables\Columns\TextColumn::make('name')->label('First Name')->searchable(),
+                Tables\Columns\TextColumn::make('email')->searchable(),
+                Tables\Columns\TextColumn::make('roles')
+                    ->label('Roles')
+                    ->formatStateUsing(fn ($state, $record) => $record->roles->pluck('name')->join(', ')),
+            ])
+            ->actions(actions: [ EditAction::make() ])
+            ->bulkActions([ DeleteBulkAction::make() ]);
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index'  => Pages\ListUsers::route('/'),
+            'create' => Pages\CreateUser::route('/create'),
+            'edit'   => Pages\EditUser::route('/{record}/edit'),
+        ];
+    }
+}
