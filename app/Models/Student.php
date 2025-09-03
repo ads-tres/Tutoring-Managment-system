@@ -32,7 +32,7 @@ class Student extends Model
         'school_type',
         'grade',
         'frequency',
-        'start_time',
+        'scheduled_days', 'start_time', 'session_length_minutes',
         'end_time',
         'session_duration',
         'status',
@@ -45,6 +45,7 @@ class Student extends Model
         'dob' => 'date',
         'initial_skills' => 'array',
         'start_date' => 'date',
+        'scheduled_days' => 'array',
     ];
 
     public function parent()
@@ -54,7 +55,7 @@ class Student extends Model
 
     public function attendances()
     {
-        // return $this->hasMany(Attendance::class);
+        return $this->hasMany(Attendance::class);
     }
 }
 

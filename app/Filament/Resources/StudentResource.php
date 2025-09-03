@@ -13,19 +13,22 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 
+use Filament\Forms\Components\CheckboxList;
+use Filament\Forms\Components\TimePicker;
+
 class StudentResource extends Resource
 {
     protected static ?string $model = Student::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static ?string $navigationIcon = 'heroicon-o-user-group';
 
     public static function form(Form $form): Form
     {
         return $form
             ->schema([
-                Forms\Components\TextInput::make('parent_id')
-                    ->required()
-                    ->numeric(),
+                Forms\Components\Select::make('parent_id')
+                    ->relationship('parent', 'name')
+                    ->required(),
                 Forms\Components\TextInput::make('full_name')
                     ->required()
                     ->maxLength(255),
@@ -92,13 +95,41 @@ class StudentResource extends Resource
                 Forms\Components\TextInput::make('session_duration')
                     ->numeric()
                     ->default(null),
-                Forms\Components\TextInput::make('status')
+                Forms\Components\Select::make('status')
+                    ->options([
+                        'active' => 'Active',
+                        'inactive' => 'Inactive',
+                        'on hold' => 'On Hold',
+                    ])
+                    ->default('active')
                     ->required(),
                 Forms\Components\DatePicker::make('start_date'),
                 Forms\Components\FileUpload::make('student_image')
                     ->image(),
                 Forms\Components\FileUpload::make('parents_image')
                     ->image(),
+
+
+                Forms\Components\CheckboxList::make('scheduled_days')
+                    ->label('Weekly schedule')
+                    ->options([
+                        'monday' => 'Monday',
+                        'tuesday' => 'Tuesday',
+                        'wednesday' => 'Wednesday',
+                        'thursday' => 'Thursday',
+                        'friday' => 'Friday',
+                        'saturday' => 'Saturday',
+                        'sunday' => 'Sunday',
+                    ])
+                    ->columns(3),
+
+                Forms\Components\TimePicker::make('start_time')
+                    ->seconds(false),
+
+                Forms\Components\TextInput::make('session_length_minutes')
+                    ->numeric()
+                    ->minValue(30)
+                    ->step(15)
             ]);
     }
 
@@ -169,7 +200,14 @@ class StudentResource extends Resource
                     ->numeric()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('status'),
+                Tables\Columns\TextColumn::make('status')
+                    ->badge()
+                    ->color(fn(string $state): string => match ($state) {
+                        'active' => 'success',
+                        'inactive' => 'danger',
+                        'on hold' => 'warning',
+                    })
+                    ->formatStateUsing(fn(string $state): string => ucfirst($state)),
                 Tables\Columns\TextColumn::make('start_date')
                     ->date()
                     ->sortable()
@@ -187,7 +225,12 @@ class StudentResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //
+                Tables\Filters\SelectFilter::make('status')
+                    ->options([
+                        'active' => 'Active',
+                        'inactive' => 'Inactive',
+                        'on hold' => 'On Hold',
+                    ]),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
@@ -202,9 +245,10 @@ class StudentResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            RelationManagers\AttendancesRelationManager::class,
         ];
     }
+
 
     public static function getPages(): array
     {

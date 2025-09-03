@@ -38,9 +38,11 @@ return new class extends Migration
             $table->string('grade')->nullable();
             $table->string('frequency')->nullable(); // e.g. JSON or comma-separated
             $table->time('start_time')->nullable();
+            $table->unsignedSmallInteger('session_length_minutes')->nullable()->after('start_time'); // e.g. 90
             $table->time('end_time')->nullable();
             $table->integer('session_duration')->nullable();
             $table->enum('status', ['active','inactive'])->default('active');
+            $table->json('scheduled_days')->nullable()->after('status');
             $table->date('start_date')->nullable();
             $table->string('student_image')->nullable();
             $table->string('parents_image')->nullable();
