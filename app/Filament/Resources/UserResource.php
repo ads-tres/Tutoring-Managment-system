@@ -11,12 +11,15 @@ use Filament\Resources\Resource;
 use App\Filament\Resources\UserResource\Pages;
 use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\DeleteBulkAction;
+// use App\Filament\Resources\RelationManagers\StudentsRelationManager;
+use App\Filament\Resources\UserResource\RelationManagers\StudentsRelationManager;
 
 class UserResource extends Resource
 {
     protected static ?string $model = User::class;
     protected static ?string $navigationIcon = 'heroicon-o-users';
     protected static ?string $navigationGroup = 'Administration';
+
 
     public static function form(Form $form): Form
     {
@@ -33,7 +36,7 @@ class UserResource extends Resource
                 Forms\Components\TextInput::make('phone')->label('Phone'),
                 Forms\Components\DatePicker::make('date_of_birth')->label('Date of Birth'),
                 Forms\Components\FileUpload::make('profile_photo_path')->label('Profile Photo')->image(),
-                
+
                 // Role assignment using Shield & Spatie
                 Forms\Components\Select::make('roles')
                     ->label('Roles')
@@ -53,18 +56,28 @@ class UserResource extends Resource
                 Tables\Columns\TextColumn::make('email')->searchable(),
                 Tables\Columns\TextColumn::make('roles')
                     ->label('Roles')
-                    ->formatStateUsing(fn ($state, $record) => $record->roles->pluck('name')->join(', ')),
+                    ->formatStateUsing(fn($state, $record) => $record->roles->pluck('name')->join(', ')),
             ])
-            ->actions(actions: [ EditAction::make() ])
-            ->bulkActions([ DeleteBulkAction::make() ]);
+            ->actions(actions: [EditAction::make()])
+            ->bulkActions([DeleteBulkAction::make()]);
     }
+
+    public static function getRelations(): array
+    {
+        return [
+            StudentsRelationManager::class,
+        ];
+    }
+
 
     public static function getPages(): array
     {
         return [
-            'index'  => Pages\ListUsers::route('/'),
+            'index' => Pages\ListUsers::route('/'),
             'create' => Pages\CreateUser::route('/create'),
-            'edit'   => Pages\EditUser::route('/{record}/edit'),
+            'edit' => Pages\EditUser::route('/{record}/edit'),
         ];
     }
+
+
 }
