@@ -57,5 +57,10 @@ class Student extends Model
     {
         return $this->hasMany(Attendance::class);
     }
+
+    public function maxMonthlySessions(): int {
+        $daysPerWeek = count($this->scheduled_days ?? []);
+        return $daysPerWeek * 4;
+    }
 }
 

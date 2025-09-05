@@ -23,8 +23,7 @@ class AttendancesRelationManager extends RelationManager
 
     protected static ?string $recordTitleAttribute = 'subject';
 
-    // NOTE: In Filament v3, RelationManager::form() is an instance method (not static).
-    // Docs: “Managing relationships” & v3 upgrade notes. :contentReference[oaicite:0]{index=0}
+
     public function form(Forms\Form $form): Forms\Form
     {
         return $form->schema([
@@ -32,7 +31,7 @@ class AttendancesRelationManager extends RelationManager
                 ->label('Type')
                 ->options([
                     'on-schedule' => 'On-schedule',
-                    'additional'  => 'Additional',
+                    'additional' => 'Additional',
                     'rescheduled' => 'Rescheduled',
                 ])
                 ->required()
@@ -41,7 +40,7 @@ class AttendancesRelationManager extends RelationManager
                 ->afterStateUpdated(function (Set $set, Get $get) {
                     if ($get('type') === 'on-schedule') {
                         $owner = $this->getOwnerRecord(); // the current Student
-                        $next  = $this->nextOccurrenceDate($owner->scheduled_days ?? []);
+                        $next = $this->nextOccurrenceDate($owner->scheduled_days ?? []);
                         if ($next) {
                             $set('scheduled_date', $next->toDateString());
                         }
@@ -50,21 +49,21 @@ class AttendancesRelationManager extends RelationManager
 
             DatePicker::make('scheduled_date')
                 ->label('Scheduled date')
-                ->native(false) 
+                ->native(false)
                 ->required()
                 // For on-schedule, we fill it automatically & lock it
-                ->disabled(fn (Get $get) => $get('type') === 'on-schedule'),
+                ->disabled(fn(Get $get) => $get('type') === 'on-schedule'),
 
             DatePicker::make('actual_date')
                 ->label('New date (if rescheduled)')
                 ->native(false)
-                ->visible(fn (Get $get) => $get('type') === 'rescheduled'),
+                ->visible(fn(Get $get) => $get('type') === 'rescheduled'),
 
             Textarea::make('reason')
                 ->label('Reason (for reschedule)')
                 ->rows(2)
                 ->maxLength(500)
-                ->visible(fn (Get $get) => $get('type') === 'rescheduled'),
+                ->visible(fn(Get $get) => $get('type') === 'rescheduled'),
 
             TextInput::make('subject')->maxLength(100),
             TextInput::make('topic')->maxLength(150),
@@ -78,7 +77,7 @@ class AttendancesRelationManager extends RelationManager
 
             Select::make('status')
                 ->options([
-                    'pending'  => 'Pending',
+                    'pending' => 'Pending',
                     'approved' => 'Approved',
                 ])
                 ->default('pending')
@@ -87,10 +86,12 @@ class AttendancesRelationManager extends RelationManager
             Select::make('payment_status')
                 ->options([
                     'unpaid' => 'Unpaid',
-                    'paid'   => 'Paid',
+                    'paid' => 'Paid',
                 ])
                 ->default('unpaid')
                 ->required(),
+            Forms\Components\Textarea::make('comment1')->label('Comment 1')->rows(2),
+            Forms\Components\Textarea::make('comment2')->label('Comment 2')->rows(2),
         ]);
     }
 
@@ -104,7 +105,7 @@ class AttendancesRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('type')
                     ->label('Type')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
+                    ->color(fn(string $state): string => match ($state) {
                         'on-schedule' => 'primary',
                         'additional' => 'warning',
                         'rescheduled' => 'info',
@@ -114,7 +115,7 @@ class AttendancesRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('duration')->label('Minutes'),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
+                    ->color(fn(string $state): string => match ($state) {
                         'pending' => 'warning',
                         'approved' => 'success',
                         default => 'gray',
@@ -122,12 +123,14 @@ class AttendancesRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('payment_status')
                     ->label('Paid?')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
+                    ->color(fn(string $state): string => match ($state) {
                         'unpaid' => 'danger',
                         'paid' => 'success',
                         default => 'gray',
                     }),
                 Tables\Columns\TextColumn::make('created_at')->dateTime()->since()->toggleable(),
+                Tables\Columns\TextColumn::make('comment1')->label('Comment 1')->limit(30)->toggleable(),
+                Tables\Columns\TextColumn::make('comment2')->label('Comment 2')->limit(30)->toggleable(),
             ])
             ->headerActions([
                 Tables\Actions\CreateAction::make()
@@ -137,8 +140,8 @@ class AttendancesRelationManager extends RelationManager
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
                 Tables\Actions\Action::make('approve')
-                    ->visible(fn ($record) => $record->status === 'pending')
-                    ->action(fn ($record) => $record->update(['status' => 'approved']))
+                    ->visible(fn($record) => $record->status === 'pending')
+                    ->action(fn($record) => $record->update(['status' => 'approved']))
                     ->requiresConfirmation()
                     ->color('success')
                     ->icon('heroicon-o-check-circle'),
@@ -156,37 +159,20 @@ class AttendancesRelationManager extends RelationManager
      */
     private function nextOccurrenceDate(array $days): ?Carbon
     {
-        if (empty($days)) {
+        if (!$days)
             return null;
-        }
 
-        $normalized = array_map(fn ($d) => strtolower(trim($d)), $days);
-        $map = [
-            'monday'    => 1,
-            'tuesday'   => 2,
-            'wednesday' => 3,
-            'thursday'  => 4,
-            'friday'    => 5,
-            'saturday'  => 6,
-            'sunday'    => 7,
-        ];
-
-        $targets = array_values(array_unique(array_intersect_key($map, array_flip($normalized))));
-        if (empty($targets)) {
-            return null;
-        }
-
+        $map = ['monday' => 1, 'tuesday' => 2, 'wednesday' => 3, 'thursday' => 4, 'friday' => 5, 'saturday' => 6, 'sunday' => 7];
         $today = Carbon::today();
-        $todayDow = (int) $today->isoWeekday(); // 1 (Mon) .. 7 (Sun)
+        $dow = $today->isoWeekday();
+        $targets = array_intersect_key($map, array_flip(array_map('strtolower', $days)));
 
-        // Find the smallest forward delta
-        $bestDelta = null;
-        foreach ($targets as $dow) {
-            $delta = ($dow - $todayDow + 7) % 7;
-            $delta = $delta === 0 ? 0 : $delta; // today if matches
-            $bestDelta = is_null($bestDelta) ? $delta : min($bestDelta, $delta);
+        $minDelta = null;
+        foreach ($targets as $day => $weekday) {
+            $delta = ($weekday - $dow + 7) % 7;
+            $minDelta = is_null($minDelta) ? $delta : min($minDelta, $delta);
         }
 
-        return $today->copy()->addDays($bestDelta ?? 0);
+        return $today->addDays($minDelta ?? 0);
     }
 }
