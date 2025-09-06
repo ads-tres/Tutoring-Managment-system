@@ -149,46 +149,34 @@ class AttendanceResource extends Resource
                     ->icon('heroicon-o-check-circle'),
             ])
             ->bulkActions([
-                // This groups all bulk actions into a single menu for a cleaner look
+                // The bulk actions are now grouped for a cleaner UI
                 BulkActionGroup::make([
-                    // This action is for approving multiple attendances at once
                     BulkAction::make('approveSelected')
                         ->label('Approve Selected')
                         ->action(function ($records) {
-                            // This loop updates the 'status' to 'approved' for each selected record
                             $records->each->update(['status' => 'approved']);
                         })
-                        ->requiresConfirmation() // This shows a pop-up to confirm the action
+                        ->requiresConfirmation()
                         ->color('success')
-                        ->icon('heroicon-o-check')
-                        // This makes the action only visible when all selected records are 'pending'
-                        ->visible(fn ($records) => $records !== null && $records->every(fn ($record) => $record->status === 'pending')),
-
-                    // This action is for approving multiple attendances with an optional note
+                        ->icon('heroicon-o-check'),
                     BulkAction::make('approveSelectedWithComment')
                         ->label('Approve with Note')
-                        // This adds a text area to the pop-up form
                         ->form([
                             Forms\Components\Textarea::make('note')
                                 ->label('Optional Note')
                                 ->rows(2),
                         ])
                         ->action(function ($records, array $data) {
-                            // This loop updates each record
                             $records->each(function ($record) use ($data) {
                                 $record->update([
                                     'status' => 'approved',
-                                    'comment2' => $data['note'], // 'comment2' is the database field for the note
+                                    'comment2' => $data['note'], // admin comment field
                                 ]);
                             });
                         })
                         ->requiresConfirmation()
                         ->color('success')
-                        ->icon('heroicon-o-chat-bubble-left')
-                        // This makes the action only visible when all selected records are 'pending'
-                        ->visible(fn ($records) => $records !== null && $records->every(fn ($record) => $record->status === 'pending')),
-
-                    // This is the default action for deleting multiple records
+                        ->icon('heroicon-o-chat-bubble-left'),
                     DeleteBulkAction::make(),
                 ]),
             ]);
