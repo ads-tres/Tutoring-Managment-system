@@ -18,6 +18,10 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Filament\Tables\Actions\BulkAction;
+use Filament\Tables\Actions\Action;
+use Filament\Tables\Actions\BulkActionGroup;
+use Filament\Tables\Actions\DeleteBulkAction;
 
 class AttendanceResource extends Resource
 {
@@ -121,7 +125,7 @@ class AttendanceResource extends Resource
                         default => 'gray',
                     })
                     ->label('Paid?'),
-                Tables\Columns\TextColumn::make('created_at')->dateTime()->since()->toggleable(),
+                Tables\Columns\TextColumn::make('created_at')->dateTime()->since()->sortable()->toggleable(),
                 Tables\Columns\TextColumn::make('comment1')->label('Comment 1')->limit(30)->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('comment2')->label('Comment 2')->limit(30)->toggleable(isToggledHiddenByDefault: true),
             ])
@@ -145,10 +149,51 @@ class AttendanceResource extends Resource
                     ->icon('heroicon-o-check-circle'),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                // This groups all bulk actions into a single menu for a cleaner look
+                BulkActionGroup::make([
+                    // This action is for approving multiple attendances at once
+                    BulkAction::make('approveSelected')
+                        ->label('Approve Selected')
+                        ->action(function ($records) {
+                            // This loop updates the 'status' to 'approved' for each selected record
+                            $records->each->update(['status' => 'approved']);
+                        })
+                        ->requiresConfirmation() // This shows a pop-up to confirm the action
+                        ->color('success')
+                        ->icon('heroicon-o-check')
+                        // This makes the action only visible when all selected records are 'pending'
+                        ->visible(fn ($records) => $records !== null && $records->every(fn ($record) => $record->status === 'pending')),
+
+                    // This action is for approving multiple attendances with an optional note
+                    BulkAction::make('approveSelectedWithComment')
+                        ->label('Approve with Note')
+                        // This adds a text area to the pop-up form
+                        ->form([
+                            Forms\Components\Textarea::make('note')
+                                ->label('Optional Note')
+                                ->rows(2),
+                        ])
+                        ->action(function ($records, array $data) {
+                            // This loop updates each record
+                            $records->each(function ($record) use ($data) {
+                                $record->update([
+                                    'status' => 'approved',
+                                    'comment2' => $data['note'], // 'comment2' is the database field for the note
+                                ]);
+                            });
+                        })
+                        ->requiresConfirmation()
+                        ->color('success')
+                        ->icon('heroicon-o-chat-bubble-left')
+                        // This makes the action only visible when all selected records are 'pending'
+                        ->visible(fn ($records) => $records !== null && $records->every(fn ($record) => $record->status === 'pending')),
+
+                    // This is the default action for deleting multiple records
+                    DeleteBulkAction::make(),
                 ]),
             ]);
+
+
 
 
     }

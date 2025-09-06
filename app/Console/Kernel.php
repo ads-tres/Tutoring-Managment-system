@@ -1,27 +1,54 @@
 <?php
+
+namespace App\Console;
+
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 use App\Models\Student;
 use App\Notifications\ApproachingMaxSessions;
 use Illuminate\Support\Facades\Notification;
 
-protected function schedule(Schedule $schedule)
+class Kernel extends ConsoleKernel
 {
-    $schedule->call(function () {
-        $students = Student::where('status', 'active')->get();
+    /**
+     * Define the application's command schedule.
+     */
+    protected function schedule(Schedule $schedule): void
+    {
+        // scheduled task to check student sessions and send alerts.
+        $schedule->call(function () {
+            $students = Student::where('status', 'active')->get();
 
-        foreach ($students as $student) {
-            $max = $student->maxMonthlySessions(); // defined in Student model
-            $count = $student->attendances()
-                ->whereMonth('scheduled_date', now()->month)
-                ->where('status', 'approved')
-                ->count();
+            foreach ($students as $student) {
+                // Get the maximum monthly sessions for the student.
+                $max = $student->maxMonthlySessions();
 
-            if ($count >= $max - 2 && $count < $max) {
-                // Notify the parent
-                $student->parent->notify(new ApproachingMaxSessions($student, $count, $max));
+                // Get approved sessions for the current month.
+                $count = $student->attendances()
+                    ->whereMonth('scheduled_date', now()->month)
+                    ->where('status', 'approved')
+                    ->count();
 
-                // Optionally, notify assigned subordinate if applicable
-                // $student->subordinate->notify(...);
+                // Check if the student is approaching the max limit (within 2 sessions).
+                if ($count >= $max - 2 && $count < $max) {
+                    // Trigger a notification to the parent.
+                    Notification::send($student->parent, new ApproachingMaxSessions($student, $count, $max));
+
+                    // Check if the parent has a region scope and a subordinate, and notify them.
+                    if ($student->parent->region_scope_type && $student->parent->subordinate) {
+                        Notification::send($student->parent->subordinate, new ApproachingMaxSessions($student, $count, $max));
+                    }
+                }
             }
-        }
-    })->daily();
+        })->daily();
+    }
+
+    /**
+     * Register the commands for the application.
+     */
+    protected function commands(): void
+    {
+        $this->load(__DIR__ . '/Commands');
+        require base_path('routes/console.php');
+    }
 }

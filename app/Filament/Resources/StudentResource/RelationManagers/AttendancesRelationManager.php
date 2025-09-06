@@ -101,7 +101,7 @@ class AttendancesRelationManager extends RelationManager
             ->recordTitleAttribute('subject')
             ->columns([
                 Tables\Columns\TextColumn::make('scheduled_date')->date(),
-                Tables\Columns\TextColumn::make('actual_date')->date()->toggleable(),
+                Tables\Columns\TextColumn::make('actual_date')->date()->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('type')
                     ->label('Type')
                     ->badge()
@@ -129,8 +129,8 @@ class AttendancesRelationManager extends RelationManager
                         default => 'gray',
                     }),
                 Tables\Columns\TextColumn::make('created_at')->dateTime()->since()->toggleable(),
-                Tables\Columns\TextColumn::make('comment1')->label('Comment 1')->limit(30)->toggleable(),
-                Tables\Columns\TextColumn::make('comment2')->label('Comment 2')->limit(30)->toggleable(),
+                Tables\Columns\TextColumn::make('comment1')->label('Comment 1')->limit(30)->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('comment2')->label('Comment 2')->limit(30)->toggleable(isToggledHiddenByDefault: true),
             ])
             ->headerActions([
                 Tables\Actions\CreateAction::make()
