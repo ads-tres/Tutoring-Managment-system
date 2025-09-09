@@ -9,21 +9,22 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    // In the migration file:
-public function up(): void
-{
-    Schema::table('students', function (Blueprint $table) {
-        $table->json('scheduled_days')->nullable()->after('status');
-        $table->time('start_time')->nullable()->after('scheduled_days');
-        $table->unsignedSmallInteger('session_length_minutes')->nullable()->after('start_time');
-    });
-}
+    public function up(): void
+    {
+        Schema::table('students', function (Blueprint $table) {
+            $table->unsignedSmallInteger('session_length_minutes')->nullable()->after('start_time');
+            $table->json('scheduled_days')->nullable()->after('status');
+        });
+    }
 
-public function down(): void
-{
-    Schema::table('students', function (Blueprint $table) {
-        $table->dropColumn(['scheduled_days', 'start_time', 'session_length_minutes']);
-    });
-}
-
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('students', function (Blueprint $table) {
+            $table->dropColumn('session_length_minutes');
+            $table->dropColumn('scheduled_days');
+        });
+    }
 };

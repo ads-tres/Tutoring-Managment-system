@@ -8,14 +8,16 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
+     *
+     * @return void
      */
-    public function up(): void
+    public function up()
     {
         Schema::create('students', function (Blueprint $table) {
             $table->id();
             $table->foreignId('parent_id')
-            ->constrained('users')
-            ->cascadeOnDelete();
+                ->constrained('users')
+                ->cascadeOnDelete();
             $table->string('full_name');
             $table->string('student_phone')->nullable();
             $table->enum('sex', ['M', 'F']);
@@ -36,13 +38,11 @@ return new class extends Migration
             $table->string('school_name')->nullable();
             $table->enum('school_type', ['private','public','international'])->nullable();
             $table->string('grade')->nullable();
-            $table->string('frequency')->nullable(); // e.g. JSON or comma-separated
+            $table->string('frequency')->nullable();
             $table->time('start_time')->nullable();
-            $table->unsignedSmallInteger('session_length_minutes')->nullable()->after('start_time'); // e.g. 90
             $table->time('end_time')->nullable();
             $table->integer('session_duration')->nullable();
             $table->enum('status', ['active','inactive'])->default('active');
-            $table->json('scheduled_days')->nullable()->after('status');
             $table->date('start_date')->nullable();
             $table->string('student_image')->nullable();
             $table->string('parents_image')->nullable();
@@ -52,8 +52,10 @@ return new class extends Migration
 
     /**
      * Reverse the migrations.
+     *
+     * @return void
      */
-    public function down(): void
+    public function down()
     {
         Schema::dropIfExists('students');
     }
