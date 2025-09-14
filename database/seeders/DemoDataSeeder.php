@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\Student;
 use App\Models\Attendance;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\Models\Permission;
 use Carbon\Carbon;
 
 class DemoDataSeeder extends Seeder
@@ -19,16 +20,51 @@ class DemoDataSeeder extends Seeder
      */
     public function run()
     {
-        // 1. Create Roles
-        Role::firstOrCreate(['name' => 'manager']);
-        Role::firstOrCreate(['name' => 'subordinate']);
-        Role::firstOrCreate(['name' => 'tutor']);
-        Role::firstOrCreate(['name' => 'parent']);
-        Role::firstOrCreate(['name' => 'accountant']);
-        Role::firstOrCreate(['name' => 'super-admin']);
+        // 1. Create a comprehensive list of all permissions
+        $permissions = [
+            'viewAny-User', 'view-User', 'create-User', 'update-User', 'delete-User', 'restore-User', 'forceDelete-User',
+            'viewAny-Student', 'view-Student', 'create-Student', 'update-Student', 'delete-Student', 'restore-Student', 'forceDelete-Student',
+            'viewAny-Attendance', 'view-Attendance', 'create-Attendance', 'update-Attendance', 'delete-Attendance', 'restore-Attendance', 'forceDelete-Attendance',
+            'viewAny-Tutor', 'view-Tutor', 'create-Tutor', 'update-Tutor', 'delete-Tutor', 'restore-Tutor', 'forceDelete-Tutor',
+            'viewAny-Parent', 'view-Parent', 'create-Parent', 'update-Parent', 'delete-Parent', 'restore-Parent', 'forceDelete-Parent',
+            'viewAny-Accountant', 'view-Accountant', 'create-Accountant', 'update-Accountant', 'delete-Accountant', 'restore-Accountant', 'forceDelete-Accountant',
+            'viewAny-Role', 'view-Role', 'create-Role', 'update-Role', 'delete-Role', 'restore-Role', 'forceDelete-Role',
+            'viewAny-Permission', 'view-Permission', 'create-Permission', 'update-Permission', 'delete-Permission', 'restore-Permission', 'forceDelete-Permission',
+        ];
 
-        // 2. Create users with roles and their specific data from migrations
-        $manager = User::firstOrCreate(
+        foreach ($permissions as $permission) {
+            Permission::firstOrCreate(['name' => $permission]);
+        }
+
+        // 2. Create Roles
+        $managerRole = Role::firstOrCreate(['name' => 'manager']);
+        $subordinateRole = Role::firstOrCreate(['name' => 'subordinate']);
+        $tutorRole = Role::firstOrCreate(['name' => 'tutor']);
+        $parentRole = Role::firstOrCreate(['name' => 'parent']);
+        $accountantRole = Role::firstOrCreate(['name' => 'accountant']);
+
+        // 3. Assign specific permissions to each role
+        // The manager role gets all permissions
+        $managerRole->syncPermissions(Permission::all());
+
+        $subordinateRole->syncPermissions([
+            'viewAny-Student', 'view-Student', 'create-Student', 'update-Student', 'viewAny-Tutor', 'view-Tutor'
+        ]);
+
+        $tutorRole->syncPermissions([
+            'viewAny-Student', 'view-Student', 'create-Attendance', 'update-Attendance'
+        ]);
+
+        $parentRole->syncPermissions([
+            'viewAny-Student', 'view-Student', 'viewAny-Attendance', 'view-Attendance'
+        ]);
+
+        $accountantRole->syncPermissions([
+            'viewAny-Attendance', 'view-Attendance', 'update-Attendance', 'viewAny-Parent', 'view-Parent', 'viewAny-Tutor', 'view-Tutor'
+        ]);
+
+        // 4. Create users with roles
+        $manager = User::updateOrCreate(
             ['email' => 'manager@example.com'],
             [
                 'name' => 'Main Manager',
@@ -37,7 +73,7 @@ class DemoDataSeeder extends Seeder
             ]
         )->assignRole('manager');
 
-        $subordinate = User::firstOrCreate(
+        $subordinate = User::updateOrCreate(
             ['email' => 'sub@example.com'],
             [
                 'name' => 'Regional Supervisor',
@@ -46,18 +82,7 @@ class DemoDataSeeder extends Seeder
             ]
         )->assignRole('subordinate');
         
-        $superAdmin = User::firstOrCreate(
-            ['email' => 'asratabel03@gmail.com'],
-            [
-                'name' => 'Super Admin',
-                'password' => Hash::make('1234567'),
-                'phone' => '0900000000',
-            ]
-        )->assignRole('super-admin');
-        
-
-        // Existing Tutor
-        $tutor1 = User::firstOrCreate(
+        $tutor1 = User::updateOrCreate(
             ['email' => 'tutor@example.com'],
             [
                 'name' => 'Sample Tutor',
@@ -68,8 +93,7 @@ class DemoDataSeeder extends Seeder
             ]
         )->assignRole('tutor');
 
-        // New Tutor 2
-        $tutor2 = User::firstOrCreate(
+        $tutor2 = User::updateOrCreate(
             ['email' => 'tutor2@example.com'],
             [
                 'name' => 'Math Tutor',
@@ -80,8 +104,7 @@ class DemoDataSeeder extends Seeder
             ]
         )->assignRole('tutor');
 
-        // Existing Parent
-        $parent1 = User::firstOrCreate(
+        $parent1 = User::updateOrCreate(
             ['email' => 'parent@example.com'],
             [
                 'name' => 'Sample Parent',
@@ -90,8 +113,7 @@ class DemoDataSeeder extends Seeder
             ]
         )->assignRole('parent');
 
-        // New Parent 2
-        $parent2 = User::firstOrCreate(
+        $parent2 = User::updateOrCreate(
             ['email' => 'parent2@example.com'],
             [
                 'name' => 'New Parent',
@@ -100,8 +122,7 @@ class DemoDataSeeder extends Seeder
             ]
         )->assignRole('parent');
 
-        // 3. Create students linked to parent users
-        // Existing Student
+        // 5. Create students linked to parent users
         $student1 = Student::firstOrCreate(
             ['full_name' => 'Student One'],
             [
@@ -133,7 +154,6 @@ class DemoDataSeeder extends Seeder
             ]
         );
         
-        // New Student 2
         $student2 = Student::firstOrCreate(
             ['full_name' => 'Student Two'],
             [
@@ -158,8 +178,7 @@ class DemoDataSeeder extends Seeder
             ]
         );
 
-        // 4. Create sample attendance records
-        // For Student 1 & Tutor 1
+        // 6. Create sample attendance records
         Attendance::firstOrCreate(
             [
                 'student_id' => $student1->id,
@@ -178,7 +197,6 @@ class DemoDataSeeder extends Seeder
             ]
         );
 
-        // For Student 1 & Tutor 1 (additional)
         Attendance::firstOrCreate(
             [
                 'student_id' => $student1->id,
@@ -197,7 +215,6 @@ class DemoDataSeeder extends Seeder
             ]
         );
 
-        // For Student 2 & Tutor 2
         Attendance::firstOrCreate(
             [
                 'student_id' => $student2->id,
@@ -216,7 +233,6 @@ class DemoDataSeeder extends Seeder
             ]
         );
         
-        // For Student 2 & Tutor 2 (rescheduled)
         Attendance::firstOrCreate(
             [
                 'student_id' => $student2->id,
