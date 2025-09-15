@@ -192,7 +192,7 @@ class DemoDataSeeder extends Seeder
                 'topic' => 'Algebra Basics',
                 'duration' => 2,
                 'comment1' => 'Covered basic algebra concepts.',
-                'status' => 'filled',
+                'status' => 'rejected',
                 'payment_status' => 'unpaid',
             ]
         );

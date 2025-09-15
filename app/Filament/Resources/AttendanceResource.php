@@ -194,4 +194,5 @@ class AttendanceResource extends Resource
             'edit' => EditAttendance::route('/{record}/edit'),
         ];
     }
+    
 }
