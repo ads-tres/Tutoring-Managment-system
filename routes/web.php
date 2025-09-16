@@ -22,24 +22,24 @@ Route::get('/', function () {
  
  require __DIR__.'/auth.php';
 
-// Parent-only routes
-Route::middleware(['auth', 'role:parent'])
-    ->prefix('parent')
-    ->name('parent.')
-    ->group(function () {
-        // Dashboard
-        Route::get('/dashboard', DashboardController::class)
-             ->name('dashboard');
+// // Parent-only routes
+// Route::middleware(['auth', 'role:parent'])
+//     ->prefix('parent')
+//     ->name('parent.')
+//     ->group(function () {
+//         // Dashboard
+//         Route::get('/dashboard', DashboardController::class)
+//              ->name('dashboard');
 
-        // Approve a pending attendance
-        Route::put('/attendance/{attendance}/approve', [AttendanceController::class, 'approve'])
-             ->name('attendance.approve');
+//         // Approve a pending attendance
+//         Route::put('/attendance/{attendance}/approve', [AttendanceController::class, 'approve'])
+//              ->name('attendance.approve');
 
-        // Dispute a pending attendance (parent adds comment)
-        Route::put('/attendance/{attendance}/dispute', [AttendanceController::class, 'dispute'])
-             ->name('attendance.dispute');
+//         // Dispute a pending attendance (parent adds comment)
+//         Route::put('/attendance/{attendance}/dispute', [AttendanceController::class, 'dispute'])
+//              ->name('attendance.dispute');
 
-        // Export all attendance for this parent's children (CSV)
-        Route::get('/attendance/export', [AttendanceController::class, 'export'])
-             ->name('attendance.export');
-});
+//         // Export all attendance for this parent's children (CSV)
+//         Route::get('/attendance/export', [AttendanceController::class, 'export'])
+//              ->name('attendance.export');
+// });

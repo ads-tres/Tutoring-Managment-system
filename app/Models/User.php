@@ -128,13 +128,27 @@ class User extends Authenticatable implements FilamentUser
     public function canAccessPanel(Panel $panel): bool
     {
         // Allow access if user has 'manager' role (or whatever admin role you use)
-        return $this->hasRole('manager');
+        return $this->hasRole('manager')|| $this->hasRole('parent');;
     }
 
     public function students(): HasMany
     {
         return $this->hasMany(Student::class, 'parent_id', 'id');
     }
+
+     // Attendance through students
+     public function attendancesViaChildren()
+     {
+         return $this->hasManyThrough(
+             Attendance::class,   // final model
+             Student::class,      // through
+             'parent_id',          // foreign key on students table
+             'student_id',         // foreign key on attendances table
+             'id',                // local key on users
+             'id'                 // local key on students
+         );
+        }
+        
 
     
 }

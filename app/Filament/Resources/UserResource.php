@@ -11,7 +11,6 @@ use Filament\Resources\Resource;
 use App\Filament\Resources\UserResource\Pages;
 use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\DeleteBulkAction;
-// use App\Filament\Resources\RelationManagers\StudentsRelationManager;
 use App\Filament\Resources\UserResource\RelationManagers\StudentsRelationManager;
 
 class UserResource extends Resource
@@ -19,7 +18,6 @@ class UserResource extends Resource
     protected static ?string $model = User::class;
     protected static ?string $navigationIcon = 'heroicon-o-users';
     protected static ?string $navigationGroup = 'Administration';
-
 
     public static function form(Form $form): Form
     {
@@ -65,10 +63,9 @@ class UserResource extends Resource
     public static function getRelations(): array
     {
         return [
-            // StudentsRelationManager::class,
+            StudentsRelationManager::class,
         ];
     }
-
 
     public static function getPages(): array
     {
@@ -78,6 +75,4 @@ class UserResource extends Resource
             'edit' => Pages\EditUser::route('/{record}/edit'),
         ];
     }
-
-
 }
