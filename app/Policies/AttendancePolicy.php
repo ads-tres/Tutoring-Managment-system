@@ -4,34 +4,35 @@ namespace App\Policies;
 
 use App\Models\User;
 use App\Models\Attendance;
-use Illuminate\Auth\Access\HandlesAuthorization;
+use Illuminate\Auth\Access\Response;
+use Illuminate\Support\Facades\Auth;
 
 class AttendancePolicy
 {
-    use HandlesAuthorization;
-
     /**
-     * Determine whether the user can view any models.
-     */
-    public function viewAny(User $user): bool
-    {
-        return $user->can('view_any_attendance');
-    }
-
-    /**
-     * Determine whether the user can view the model.
+     * Determine whether the user can view a specific attendance record.
+     * This allows a parent to view attendance records for their own child.
      */
     public function view(User $user, Attendance $attendance): bool
     {
-        return $user->can('view_attendance');
+        if ($user->hasRole(['manager', 'tutor'])) {
+            return true;
+        }
+
+        if ($user->hasRole('parent')) {
+            // Check if the parent owns the student associated with this attendance record.
+            return $user->id === $attendance->student->parent_id;
+        }
+
+        return false;
     }
 
     /**
-     * Determine whether the user can create models.
+     * Determine whether the user can create attendance records.
      */
     public function create(User $user): bool
     {
-        return $user->can('create_attendance');
+        return $user->hasRole(['manager', 'tutor']);
     }
 
     /**
@@ -39,7 +40,7 @@ class AttendancePolicy
      */
     public function update(User $user, Attendance $attendance): bool
     {
-        return $user->can('update_attendance');
+        return $user->hasRole(['manager', 'tutor']);
     }
 
     /**
@@ -47,62 +48,22 @@ class AttendancePolicy
      */
     public function delete(User $user, Attendance $attendance): bool
     {
-        return $user->can('delete_attendance');
+        return $user->hasRole(['manager']);
     }
 
     /**
-     * Determine whether the user can bulk delete.
-     */
-    public function deleteAny(User $user): bool
-    {
-        return $user->can('delete_any_attendance');
-    }
-
-    /**
-     * Determine whether the user can permanently delete.
-     */
-    public function forceDelete(User $user, Attendance $attendance): bool
-    {
-        return $user->can('force_delete_attendance');
-    }
-
-    /**
-     * Determine whether the user can permanently bulk delete.
-     */
-    public function forceDeleteAny(User $user): bool
-    {
-        return $user->can('force_delete_any_attendance');
-    }
-
-    /**
-     * Determine whether the user can restore.
+     * Determine whether the user can restore the model.
      */
     public function restore(User $user, Attendance $attendance): bool
     {
-        return $user->can('restore_attendance');
+        return $user->hasRole(['manager']);
     }
 
     /**
-     * Determine whether the user can bulk restore.
+     * Determine whether the user can permanently delete the model.
      */
-    public function restoreAny(User $user): bool
+    public function forceDelete(User $user, Attendance $attendance): bool
     {
-        return $user->can('restore_any_attendance');
-    }
-
-    /**
-     * Determine whether the user can replicate.
-     */
-    public function replicate(User $user, Attendance $attendance): bool
-    {
-        return $user->can('replicate_attendance');
-    }
-
-    /**
-     * Determine whether the user can reorder.
-     */
-    public function reorder(User $user): bool
-    {
-        return $user->can('reorder_attendance');
+        return $user->hasRole(['manager']);
     }
 }

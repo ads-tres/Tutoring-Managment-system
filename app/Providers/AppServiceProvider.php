@@ -2,7 +2,10 @@
 
 namespace App\Providers;
 
+use App\Models\Attendance;
+use App\Policies\AttendancePolicy;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Gate; // <-- Add this import
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -19,6 +22,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Gate::policy(Attendance::class, AttendancePolicy::class);
     }
 }

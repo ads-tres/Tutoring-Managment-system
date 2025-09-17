@@ -22,6 +22,9 @@ use Filament\Tables\Actions\BulkAction;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Actions\BulkActionGroup;
 use Filament\Tables\Actions\DeleteBulkAction;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model; // Add this line
+use Illuminate\Support\Facades\Auth; // Add this line
 
 class AttendanceResource extends Resource
 {
@@ -97,8 +100,28 @@ class AttendanceResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('student.full_name')->label('Student'),
-                Tables\Columns\TextColumn::make('tutor.name')->label('Tutor'),
+                Tables\Columns\TextColumn::make('student.full_name')
+                    ->label('Student')
+                    ->sortable()
+                    ->searchable(),
+                Tables\Columns\TextColumn::make('tutor.name')
+                    ->label('Tutor')
+                    ->sortable()
+                    ->searchable(),
+                Tables\Columns\TextColumn::make('subject')
+                    ->sortable()
+                    ->searchable()
+                    ->limit(20)
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('topic')
+                    ->sortable()
+                    ->searchable()
+                    ->limit(20)
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('duration')
+                    ->label('Duration (hrs)')
+                    ->sortable()
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('type')
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
@@ -107,16 +130,26 @@ class AttendanceResource extends Resource
                         'rescheduled' => 'info',
                         default => 'gray',
                     })
-                    ->label('Type'),
-                Tables\Columns\TextColumn::make('scheduled_date')->date(),
-                Tables\Columns\TextColumn::make('actual_date')->date()->toggleable(isToggledHiddenByDefault: true),
+                    ->label('Type')
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('scheduled_date')
+                    ->date()
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('actual_date')
+                    ->date()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('reason')
+                    ->label('Reschedule Reason')
+                    ->limit(30)
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
                         'pending' => 'warning',
                         'approved' => 'success',
                         default => 'gray',
-                    }),
+                    })
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('payment_status')
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
@@ -124,10 +157,26 @@ class AttendanceResource extends Resource
                         'paid' => 'success',
                         default => 'gray',
                     })
-                    ->label('Paid?'),
-                Tables\Columns\TextColumn::make('created_at')->dateTime()->since()->sortable()->toggleable(),
-                Tables\Columns\TextColumn::make('comment1')->label('Comment 1')->limit(30)->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('comment2')->label('Comment 2')->limit(30)->toggleable(isToggledHiddenByDefault: true),
+                    ->label('Paid?')
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('approvedBy.name')
+                    ->label('Approved By')
+                    ->sortable()
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('created_at')
+                    ->dateTime()
+                    ->since()
+                    ->sortable()
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('comment1')
+                    ->label('Comment 1')
+                    ->limit(30)
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('comment2')
+                    ->label('Comment 2')
+                    ->limit(30)
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
@@ -142,23 +191,21 @@ class AttendanceResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\Action::make('approve')
-                    ->visible(fn($record) => $record->status === 'pending')
-                    ->action(fn($record) => $record->update(['status' => 'approved']))
+                    ->visible(fn(Model $record) => Auth::user()->hasRole('parent') && $record->status === 'pending')
+                    ->action(fn(Model $record) => $record->update(['status' => 'approved']))
                     ->requiresConfirmation()
                     ->color('success')
                     ->icon('heroicon-o-check-circle'),
             ])
             ->bulkActions([
-                // The bulk actions are now grouped for a cleaner UI
                 BulkActionGroup::make([
-                    BulkAction::make('approveSelected')
+                    Tables\Actions\BulkAction::make('approveSelected')
                         ->label('Approve Selected')
-                        ->action(function ($records) {
-                            $records->each->update(['status' => 'approved']);
-                        })
+                        ->action(fn($records) => $records->each->update(['status' => 'approved']))
                         ->requiresConfirmation()
                         ->color('success')
-                        ->icon('heroicon-o-check'),
+                        ->icon('heroicon-o-check')
+                        ->visible(fn() => Auth::user()->hasRole('parent')),
                     BulkAction::make('approveSelectedWithComment')
                         ->label('Approve with Note')
                         ->form([
@@ -170,20 +217,26 @@ class AttendanceResource extends Resource
                             $records->each(function ($record) use ($data) {
                                 $record->update([
                                     'status' => 'approved',
-                                    'comment2' => $data['note'], // admin comment field
+                                    'comment2' => $data['note'],
                                 ]);
                             });
                         })
                         ->requiresConfirmation()
                         ->color('success')
-                        ->icon('heroicon-o-chat-bubble-left'),
+                        ->icon('heroicon-o-chat-bubble-left')
+                        ->visible(fn() => Auth::user()->hasRole('parent')),
                     DeleteBulkAction::make(),
                 ]),
-            ]);
+            ])
+            ->modifyQueryUsing(function (Builder $query) {
+                $user = auth()->user();
 
-
-
-
+                if ($user->hasRole('parent')) {
+                    $query->whereHas('student', function ($q) use ($user) {
+                        $q->where('parent_id', $user->id);
+                    });
+                }
+            });
     }
 
     public static function getPages(): array
@@ -191,8 +244,7 @@ class AttendanceResource extends Resource
         return [
             'index' => ListAttendances::route('/'),
             'create' => CreateAttendance::route('/create'),
-            'edit' => EditAttendance::route('/{record}/edit'),
+            // 'edit' => EditAttendances::route('/{record}/edit'),
         ];
     }
-    
 }
