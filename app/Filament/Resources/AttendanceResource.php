@@ -23,8 +23,8 @@ use Filament\Tables\Actions\Action;
 use Filament\Tables\Actions\BulkActionGroup;
 use Filament\Tables\Actions\DeleteBulkAction;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model; // Add this line
-use Illuminate\Support\Facades\Auth; // Add this line
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Auth;
 
 class AttendanceResource extends Resource
 {
@@ -80,7 +80,7 @@ class AttendanceResource extends Resource
                 ->maxValue(8),
 
             Forms\Components\Select::make('status')
-                ->options(['pending' => 'Pending', 'approved' => 'Approved'])
+                ->options(['pending' => 'Pending', 'approved' => 'Approved', 'rejected' => 'Rejected'])
                 ->default('pending')
                 ->required()
                 ->native(false),
@@ -147,6 +147,7 @@ class AttendanceResource extends Resource
                     ->color(fn(string $state): string => match ($state) {
                         'pending' => 'warning',
                         'approved' => 'success',
+                        'rejected' => 'danger',
                         default => 'gray',
                     })
                     ->sortable(),
@@ -159,11 +160,13 @@ class AttendanceResource extends Resource
                     })
                     ->label('Paid?')
                     ->sortable(),
-                Tables\Columns\TextColumn::make('approvedBy.name')
-                    ->label('Approved By')
+                Tables\Columns\TextColumn::make('updated_by')
+                    ->label('Updated By')
+                    ->getStateUsing(fn(Attendance $record) => $record->approvedBy?->name)
                     ->sortable()
                     ->searchable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->visible(fn() => Auth::user()->hasRole('manager')),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->since()
@@ -180,7 +183,7 @@ class AttendanceResource extends Resource
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
-                    ->options(['pending' => 'Pending', 'approved' => 'Approved']),
+                    ->options(['pending' => 'Pending', 'approved' => 'Approved', 'rejected' => 'Rejected']),
                 Tables\Filters\SelectFilter::make('type')
                     ->options([
                         'on-schedule' => 'On-Schedule',
@@ -190,22 +193,51 @@ class AttendanceResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
+                // Parent Approve Action
                 Tables\Actions\Action::make('approve')
-                    ->visible(fn(Model $record) => Auth::user()->hasRole('parent') && $record->status === 'pending')
-                    ->action(fn(Model $record) => $record->update(['status' => 'approved']))
+                    ->visible(fn(Model $record) => Auth::user()->hasRole('parent') && in_array($record->status, ['pending', 'rejected']))
+                    ->action(fn(Model $record) => $record->update(['status' => 'approved', 'approved_by_id' => Auth::user()->id]))
                     ->requiresConfirmation()
                     ->color('success')
                     ->icon('heroicon-o-check-circle'),
+                // Parent Reject Action
+                Tables\Actions\Action::make('reject')
+                    ->visible(fn(Model $record) => Auth::user()->hasRole('parent') && $record->status === 'pending')
+                    ->action(fn(Model $record) => $record->update(['status' => 'rejected', 'approved_by_id' => Auth::user()->id]))
+                    ->requiresConfirmation()
+                    ->color('danger')
+                    ->icon('heroicon-o-x-circle'),
+                // Manager Approve Action
+                Tables\Actions\Action::make('approveAttendance')
+                    ->label('Approve Attendance')
+                    ->visible(fn(Model $record) => Auth::user()->hasRole('manager') && in_array($record->status, ['pending', 'rejected']))
+                    ->action(fn($record) => $record->update(['status' => 'approved', 'approved_by_id' => Auth::user()->id]))
+                    ->color('success')
+                    ->icon('heroicon-o-check-circle')
+                    ->requiresConfirmation()
+                    ->tooltip('Approve this attendance record'),
             ])
             ->bulkActions([
                 BulkActionGroup::make([
+                    Tables\Actions\DeleteBulkAction::make()
+                        ->visible(fn() => !Auth::user()->hasRole('parent')),
+                    // Parent Bulk Approve Action
                     Tables\Actions\BulkAction::make('approveSelected')
                         ->label('Approve Selected')
-                        ->action(fn($records) => $records->each->update(['status' => 'approved']))
+                        ->action(fn($records) => $records->each->update(['status' => 'approved', 'approved_by_id' => Auth::user()->id]))
                         ->requiresConfirmation()
                         ->color('success')
                         ->icon('heroicon-o-check')
                         ->visible(fn() => Auth::user()->hasRole('parent')),
+                    // Parent Bulk Reject Action
+                    Tables\Actions\BulkAction::make('rejectSelected')
+                        ->label('Reject Selected')
+                        ->action(fn($records) => $records->each->update(['status' => 'rejected', 'approved_by_id' => Auth::user()->id]))
+                        ->requiresConfirmation()
+                        ->color('danger')
+                        ->icon('heroicon-o-x-circle')
+                        ->visible(fn() => Auth::user()->hasRole('parent')),
+                    // Parent Bulk Approve with Note Action
                     BulkAction::make('approveSelectedWithComment')
                         ->label('Approve with Note')
                         ->form([
@@ -218,6 +250,7 @@ class AttendanceResource extends Resource
                                 $record->update([
                                     'status' => 'approved',
                                     'comment2' => $data['note'],
+                                    'approved_by_id' => Auth::user()->id,
                                 ]);
                             });
                         })
@@ -225,7 +258,16 @@ class AttendanceResource extends Resource
                         ->color('success')
                         ->icon('heroicon-o-chat-bubble-left')
                         ->visible(fn() => Auth::user()->hasRole('parent')),
-                    DeleteBulkAction::make(),
+                    // Manager Bulk Approve Action
+                    BulkAction::make('approveSelectedForManager')
+                        ->label('Approve Selected')
+                        ->action(function ($records) {
+                            $records->each(fn($record) => $record->update(['status' => 'approved', 'approved_by_id' => Auth::user()->id]));
+                        })
+                        ->requiresConfirmation()
+                        ->color('success')
+                        ->icon('heroicon-o-check')
+                        ->visible(fn() => Auth::user()->hasRole('manager')),
                 ]),
             ])
             ->modifyQueryUsing(function (Builder $query) {
@@ -244,7 +286,7 @@ class AttendanceResource extends Resource
         return [
             'index' => ListAttendances::route('/'),
             'create' => CreateAttendance::route('/create'),
-            // 'edit' => EditAttendances::route('/{record}/edit'),
+            'edit' => EditAttendance::route('/{record}/edit'),
         ];
     }
 }
