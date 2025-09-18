@@ -13,6 +13,7 @@ class Student extends Model
 
     protected $fillable = [
         'parent_id',
+        'tutor_id',
         'full_name',
         'student_phone',
         'sex',
@@ -58,6 +59,14 @@ class Student extends Model
     public function parent(): BelongsTo
     {
         return $this->belongsTo(User::class, 'parent_id', 'id');
+    }
+
+    /**
+     * Get the tutor that is assigned to the student.
+     */
+    public function tutor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'tutor_id', 'id');
     }
 
     /**

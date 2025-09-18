@@ -31,6 +31,7 @@ class AttendanceResource extends Resource
     protected static ?string $model = Attendance::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-calendar-days';
+    protected static ?string $navigationGroup = 'Students Management';
 
     public static function form(Form $form): Form
     {
@@ -209,7 +210,7 @@ class AttendanceResource extends Resource
                     ->icon('heroicon-o-x-circle'),
                 // Manager Approve Action
                 Tables\Actions\Action::make('approveAttendance')
-                    ->label('Approve Attendance')
+                    ->label('Approve')
                     ->visible(fn(Model $record) => Auth::user()->hasRole('manager') && in_array($record->status, ['pending', 'rejected']))
                     ->action(fn($record) => $record->update(['status' => 'approved', 'approved_by_id' => Auth::user()->id]))
                     ->color('success')

@@ -12,6 +12,7 @@ use Filament\Tables\Actions\BulkAction;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
+use Carbon\Carbon;
 
 class AttendancesRelationManager extends RelationManager
 {
@@ -35,7 +36,9 @@ class AttendancesRelationManager extends RelationManager
                 Forms\Components\Select::make('tutor_id')
                     ->relationship('tutor', 'name')
                     ->required()
-                    ->native(false),
+                    ->native(false)
+                    ->default(fn() => Auth::user()->id)
+                    ->visible(fn() => Auth::user()->hasRole('manager')),
                 Forms\Components\Select::make('type')
                     ->options([
                         'on-schedule' => 'On-Schedule',
@@ -47,7 +50,9 @@ class AttendancesRelationManager extends RelationManager
                     ->native(false),
                 Forms\Components\DatePicker::make('scheduled_date')
                     ->required()
-                    ->native(false),
+                    ->native(false)
+                    ->default(fn(Forms\Get $get) => $get('type') === 'on-schedule' ? now() : null)
+                    ->disabled(fn(Forms\Get $get) => $get('type') === 'on-schedule' && Auth::user()->hasRole('tutor')),
                 Forms\Components\DatePicker::make('actual_date')
                     ->visible(fn(Forms\Get $get) => $get('type') === 'rescheduled')
                     ->native(false),
@@ -70,18 +75,23 @@ class AttendancesRelationManager extends RelationManager
                     ->options(['pending' => 'Pending', 'approved' => 'Approved', 'rejected' => 'Rejected'])
                     ->default('pending')
                     ->required()
-                    ->native(false),
+                    ->native(false)
+                    ->visible(fn() => !Auth::user()->hasRole('tutor')),
                 Forms\Components\Select::make('payment_status')
                     ->options(['unpaid' => 'Unpaid', 'paid' => 'Paid'])
                     ->default('unpaid')
                     ->required()
-                    ->native(false),
+                    ->native(false)
+                    ->visible(fn() => !Auth::user()->hasRole('tutor')),
                 Forms\Components\Textarea::make('comment1')
-                    ->label('Comment 1')
-                    ->rows(2),
+                    ->label('Tutor Comment')
+                    ->rows(2)
+                    ->visible(fn() => Auth::user()->hasRole('tutor') || Auth::user()->hasRole('manager')),
                 Forms\Components\Textarea::make('comment2')
-                    ->label('Comment 2')
-                    ->rows(2),
+                    ->label('Parent Comment')
+                    ->rows(2)
+                    ->visible(fn() => Auth::user()->hasRole('parent') || Auth::user()->hasRole('manager'))
+                    ->disabled(fn() => !Auth::user()->hasRole('parent')),
             ]);
     }
 
@@ -95,6 +105,12 @@ class AttendancesRelationManager extends RelationManager
     {
         return $table
             ->recordTitleAttribute('subject')
+            ->modifyQueryUsing(function (Builder $query) {
+                // Tutors can only see attendance for students assigned to them.
+                if (Auth::user()->hasRole('tutor')) {
+                    $query->where('tutor_id', Auth::user()->id);
+                }
+            })
             ->columns([
                 Tables\Columns\TextColumn::make('tutor.name')
                     ->label('Tutor')
@@ -140,7 +156,8 @@ class AttendancesRelationManager extends RelationManager
                         'rejected' => 'danger',
                         default => 'gray',
                     })
-                    ->sortable(),
+                    ->sortable()
+                    ->visible(fn() => !Auth::user()->hasRole('tutor')),
                 Tables\Columns\TextColumn::make('payment_status')
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
@@ -149,7 +166,8 @@ class AttendancesRelationManager extends RelationManager
                         default => 'gray',
                     })
                     ->label('Paid?')
-                    ->sortable(),
+                    ->sortable()
+                    ->visible(fn() => Auth::user()->hasRole('manager')),
                 Tables\Columns\TextColumn::make('comment1')
                     ->label('Comment 1')
                     ->limit(30)
@@ -170,7 +188,16 @@ class AttendancesRelationManager extends RelationManager
                     ]),
             ])
             ->headerActions([
-                Tables\Actions\CreateAction::make(),
+                Tables\Actions\CreateAction::make()
+                    ->label('Fill Today\'s Attendance')
+                    ->visible(function () {
+                        $user = Auth::user();
+                        if (!$user->hasRole('tutor')) {
+                            return false;
+                        }
+                        // Check if attendance already exists for today
+                        return !$this->getOwnerRecord()->attendances()->whereDate('scheduled_date', Carbon::today())->exists();
+                    }),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
