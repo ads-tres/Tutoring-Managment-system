@@ -26,7 +26,6 @@ use Filament\Tables\Actions\DeleteBulkAction;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
-use Closure;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 
@@ -78,6 +77,7 @@ class AttendanceResource extends Resource
                     'on-schedule' => 'On-Schedule',
                     'additional' => 'Additional',
                     'rescheduled' => 'Rescheduled',
+                    'absent' => 'Absent',
                 ])
                 ->required()
                 ->live()
@@ -97,18 +97,28 @@ class AttendanceResource extends Resource
                 ->maxLength(500)
                 ->visible(fn(Get $get) => $get('type') === 'rescheduled'),
 
-            Forms\Components\TextInput::make('subject')->required(),
-            Forms\Components\TextInput::make('topic')->required(),
+            Forms\Components\TextInput::make('subject')
+                ->required()
+                ->visible(fn(Get $get) => $get('type') !== 'absent'),
+            Forms\Components\TextInput::make('topic')
+                ->required()
+                ->visible(fn(Get $get) => $get('type') !== 'absent'),
 
             Forms\Components\TextInput::make('duration')
                 ->label('Duration (hours)')
                 ->numeric()
                 ->required()
                 ->minValue(1)
-                ->maxValue(8),
+                ->maxValue(8)
+                ->visible(fn(Get $get) => $get('type') !== 'absent'),
 
             Forms\Components\Select::make('status')
-                ->options(['pending' => 'Pending', 'approved' => 'Approved', 'rejected' => 'Rejected'])
+                ->options([
+                    'pending' => 'Pending',
+                    'approved' => 'Approved',
+                    'rejected' => 'Rejected',
+                    'reschedule_requested' => 'Reschedule Requested'
+                ])
                 ->default('pending')
                 ->required()
                 ->native(false),
@@ -156,6 +166,7 @@ class AttendanceResource extends Resource
                         'on-schedule' => 'primary',
                         'additional' => 'warning',
                         'rescheduled' => 'info',
+                        'absent' => 'danger',
                         default => 'gray',
                     })
                     ->label('Type')
@@ -176,6 +187,7 @@ class AttendanceResource extends Resource
                         'pending' => 'warning',
                         'approved' => 'success',
                         'rejected' => 'danger',
+                        'reschedule_requested' => 'info',
                         default => 'gray',
                     })
                     ->sortable(),
@@ -211,12 +223,18 @@ class AttendanceResource extends Resource
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
-                    ->options(['pending' => 'Pending', 'approved' => 'Approved', 'rejected' => 'Rejected']),
+                    ->options([
+                        'pending' => 'Pending',
+                        'approved' => 'Approved',
+                        'rejected' => 'Rejected',
+                        'reschedule_requested' => 'Reschedule Requested'
+                    ]),
                 Tables\Filters\SelectFilter::make('type')
                     ->options([
                         'on-schedule' => 'On-Schedule',
                         'additional' => 'Additional',
                         'rescheduled' => 'Rescheduled',
+                        'absent' => 'Absent',
                     ]),
             ])
             ->actions([
@@ -244,6 +262,42 @@ class AttendanceResource extends Resource
                     ->icon('heroicon-o-check-circle')
                     ->requiresConfirmation()
                     ->tooltip('Approve this attendance record'),
+                // Tutor "Ask for Reschedule" Action
+                Tables\Actions\Action::make('ask_for_reschedule')
+                    ->label('Ask for Reschedule')
+                    ->icon('heroicon-o-arrow-path')
+                    ->color('warning')
+                    ->visible(fn(Model $record) => Auth::user()->hasRole('tutor') && $record->type === 'absent' && $record->status === 'pending')
+                    ->form([
+                        Forms\Components\DatePicker::make('new_date')
+                            ->label('New Reschedule Date')
+                            ->native(false)
+                            ->required(),
+                        Forms\Components\Textarea::make('reschedule_reason')
+                            ->label('Reason for Reschedule')
+                            ->rows(2)
+                            ->maxLength(500)
+                            ->required(),
+                    ])
+                    ->action(fn(Attendance $record, array $data) => $record->update([
+                        'status' => 'reschedule_requested',
+                        'actual_date' => $data['new_date'],
+                        'reason' => $data['reschedule_reason'],
+                    ]))
+                    ->requiresConfirmation()
+                    ->tooltip('Request a new date for this absent session'),
+                // Manager "Approve Reschedule" Action
+                Tables\Actions\Action::make('approve_reschedule')
+                    ->label('Approve Reschedule')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('success')
+                    ->visible(fn(Model $record) => Auth::user()->hasRole('manager') && $record->status === 'reschedule_requested')
+                    ->action(fn(Attendance $record) => $record->update([
+                        'status' => 'approved',
+                        'type' => 'rescheduled',
+                    ]))
+                    ->requiresConfirmation()
+                    ->tooltip('Approve and update this attendance record for the rescheduled session'),
             ])
             ->bulkActions([
                 BulkActionGroup::make([
@@ -299,6 +353,7 @@ class AttendanceResource extends Resource
                 ]),
             ])
             ->headerActions([
+                // Tutor "Fill Daily Attendance" Action (kept for tutors)
                 Tables\Actions\Action::make('fill_daily_attendance')
                     ->label('Fill Daily Attendance')
                     ->icon('heroicon-o-document-check')
@@ -319,7 +374,7 @@ class AttendanceResource extends Resource
                                 ->warning()
                                 ->send();
 
-                            return;
+                            return [];
                         }
 
                         $steps = $studentsForToday->map(function ($student, $index) use ($user) {
@@ -386,11 +441,11 @@ class AttendanceResource extends Resource
                                         ->label('Reason')
                                         ->placeholder('Enter reason for rescheduling or additional session...')
                                         ->visible(fn(Forms\Get $get) => in_array($get("students.{$index}.type"), ['rescheduled', 'additional']) && $get("students.{$index}.session_status") !== 'absent'),
-                                        
+
                                     Forms\Components\Textarea::make("students.{$index}.comment1")
                                         ->label('Tutor Comment')
                                         ->placeholder('Enter your comments for this session...'),
-                                        
+
                                     Forms\Components\Hidden::make("students.{$index}.student_id")->default($student->id),
                                     Forms\Components\Hidden::make("students.{$index}.tutor_id")->default($user->id),
                                 ]);
@@ -401,6 +456,11 @@ class AttendanceResource extends Resource
                         ];
                     })
                     ->action(function (array $data) {
+                        // Check if the 'students' key exists before proceeding to prevent errors
+                        if (!array_key_exists('students', $data)) {
+                            return;
+                        }
+                        
                         $studentsData = $data['students'];
                         foreach ($studentsData as $sessionData) {
                             $student = Student::find($sessionData['student_id']);
@@ -408,10 +468,9 @@ class AttendanceResource extends Resource
                                 // Provide default values for all possible missing fields.
                                 $attendanceData = [
                                     'status' => 'pending',
-                                    'session_status' => $sessionData['session_status'],
                                     'comment1' => $sessionData['comment1'] ?? null,
                                     'tutor_id' => $sessionData['tutor_id'],
-                                    'type' => $sessionData['type'] ?? 'on-schedule',
+                                    'type' => $sessionData['session_status'] === 'absent' ? 'absent' : ($sessionData['type'] ?? 'on-schedule'),
                                     'subject' => $sessionData['subject'] ?? ($sessionData['session_status'] === 'absent' ? 'Absent' : null),
                                     'topic' => $sessionData['topic'] ?? ($sessionData['session_status'] === 'absent' ? 'Absent' : null),
                                     'duration' => $sessionData['duration'] ?? ($sessionData['session_status'] === 'absent' ? 0 : null),
@@ -433,6 +492,29 @@ class AttendanceResource extends Resource
                     ->modalWidth('2xl')
                     ->modalSubmitActionLabel('Save Attendance')
                     ->modalCancelActionLabel('Cancel'),
+                // New action for managers to add a new attendance record
+                // Tables\Actions\Action::make('add_new_attendance')
+                //     ->label('Add New Attendance')
+                //     ->icon('heroicon-o-plus')
+                //     ->color('primary')
+                //     ->visible(fn() => Auth::user()->hasRole('manager'))
+                //     ->form(fn(Form $form) => self::form($form))
+                //     ->action(function (array $data) {
+                //          // Check if the type is 'absent' and provide default values if needed
+                //         if ($data['type'] === 'absent') {
+                //             $data['subject'] = 'N/A';
+                //             $data['topic'] = 'N/A';
+                //             $data['duration'] = 0;
+                //         }
+                //         Attendance::create($data);
+                //         Notification::make()
+                //             ->title('Attendance record created')
+                //             ->body('A new attendance record has been successfully created.')
+                //             ->success()
+                //             ->send();
+                //     })
+                //     ->modalWidth('xl')
+                //     ->modalSubmitActionLabel('Create Record'),
             ]);
     }
 

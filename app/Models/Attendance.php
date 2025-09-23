@@ -24,7 +24,10 @@ class Attendance extends Model
         'payment_status',
         'comment1',
         'comment2',
-        'approved_by_id'
+        'approved_by_id',
+        'session_status',
+        
+    
     ];
 
     public function student(): BelongsTo

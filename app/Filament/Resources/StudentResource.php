@@ -18,6 +18,8 @@ use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Forms\Components\Actions\Action;
 
+use App\Filament\Resources\StudentResource\Pages\WeeklySchedulePage;
+
 class StudentResource extends Resource
 {
     protected static ?string $model = Student::class;
@@ -250,6 +252,7 @@ class StudentResource extends Resource
                 ]),
             ])
             ->headerActions([
+                // Tutor "Fill Daily Attendance" Action (kept for tutors)
                 Tables\Actions\Action::make('fill_daily_attendance')
                     ->label('Fill Daily Attendance')
                     ->icon('heroicon-o-document-check')
@@ -270,7 +273,7 @@ class StudentResource extends Resource
                                 ->warning()
                                 ->send();
 
-                            return;
+                            return [];
                         }
 
                         $steps = $studentsForToday->map(function ($student, $index) use ($user) {
@@ -337,11 +340,11 @@ class StudentResource extends Resource
                                         ->label('Reason')
                                         ->placeholder('Enter reason for rescheduling or additional session...')
                                         ->visible(fn(Forms\Get $get) => in_array($get("students.{$index}.type"), ['rescheduled', 'additional']) && $get("students.{$index}.session_status") !== 'absent'),
-                                        
+
                                     Forms\Components\Textarea::make("students.{$index}.comment1")
                                         ->label('Tutor Comment')
                                         ->placeholder('Enter your comments for this session...'),
-                                        
+
                                     Forms\Components\Hidden::make("students.{$index}.student_id")->default($student->id),
                                     Forms\Components\Hidden::make("students.{$index}.tutor_id")->default($user->id),
                                 ]);
@@ -352,6 +355,11 @@ class StudentResource extends Resource
                         ];
                     })
                     ->action(function (array $data) {
+                        // Check if the 'students' key exists before proceeding to prevent errors
+                        if (!array_key_exists('students', $data)) {
+                            return;
+                        }
+                        
                         $studentsData = $data['students'];
                         foreach ($studentsData as $sessionData) {
                             $student = Student::find($sessionData['student_id']);
@@ -359,10 +367,9 @@ class StudentResource extends Resource
                                 // Provide default values for all possible missing fields.
                                 $attendanceData = [
                                     'status' => 'pending',
-                                    'session_status' => $sessionData['session_status'],
                                     'comment1' => $sessionData['comment1'] ?? null,
                                     'tutor_id' => $sessionData['tutor_id'],
-                                    'type' => $sessionData['type'] ?? 'on-schedule',
+                                    'type' => $sessionData['session_status'] === 'absent' ? 'absent' : ($sessionData['type'] ?? 'on-schedule'),
                                     'subject' => $sessionData['subject'] ?? ($sessionData['session_status'] === 'absent' ? 'Absent' : null),
                                     'topic' => $sessionData['topic'] ?? ($sessionData['session_status'] === 'absent' ? 'Absent' : null),
                                     'duration' => $sessionData['duration'] ?? ($sessionData['session_status'] === 'absent' ? 0 : null),
@@ -407,6 +414,12 @@ class StudentResource extends Resource
             'create' => Pages\CreateStudent::route('/create'),
             'edit' => Pages\EditStudent::route('/{record}/edit'),
             'view' => Pages\ViewStudent::route('/{record}'),
+            
+            // 'weekly-schedule' => Pages\WeeklySchedulePage::route('/{record}/weekly-schedule'),
         ];
+
+        
     }
+
+    
 }

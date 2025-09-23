@@ -7,8 +7,6 @@ use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Filament\Tables\Actions\Action;
-use Filament\Tables\Actions\BulkAction;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
@@ -31,14 +29,20 @@ class AttendancesRelationManager extends RelationManager
      */
     public function form(Form $form): Form
     {
+        // Define common visibility checks for roles
+        $isManager = fn() => Auth::user()->hasRole('manager');
+        $isTutor = fn() => Auth::user()->hasRole('tutor');
+        $isParent = fn() => Auth::user()->hasRole('parent');
+
         return $form
             ->schema([
                 Forms\Components\Select::make('tutor_id')
                     ->relationship('tutor', 'name')
                     ->required()
                     ->native(false)
-                    ->default(fn() => Auth::user()->id)
-                    ->visible(fn() => Auth::user()->hasRole('manager')),
+                    // Managers can select the tutor, tutors have their ID automatically set and disabled
+                    ->visible($isManager)
+                    ->default(Auth::user()->id),
                 Forms\Components\Select::make('type')
                     ->options([
                         'on-schedule' => 'On-Schedule',
@@ -52,7 +56,8 @@ class AttendancesRelationManager extends RelationManager
                     ->required()
                     ->native(false)
                     ->default(fn(Forms\Get $get) => $get('type') === 'on-schedule' ? now() : null)
-                    ->disabled(fn(Forms\Get $get) => $get('type') === 'on-schedule' && Auth::user()->hasRole('tutor')),
+                    // Tutors cannot change the scheduled date for 'on-schedule' type
+                    ->disabled(fn(Forms\Get $get) => $get('type') === 'on-schedule' && $isTutor()),
                 Forms\Components\DatePicker::make('actual_date')
                     ->visible(fn(Forms\Get $get) => $get('type') === 'rescheduled')
                     ->native(false),
@@ -76,22 +81,21 @@ class AttendancesRelationManager extends RelationManager
                     ->default('pending')
                     ->required()
                     ->native(false)
-                    ->visible(fn() => !Auth::user()->hasRole('tutor')),
+                    ->visible(fn() => !$isTutor()), // Only visible to manager and parent
                 Forms\Components\Select::make('payment_status')
                     ->options(['unpaid' => 'Unpaid', 'paid' => 'Paid'])
                     ->default('unpaid')
                     ->required()
                     ->native(false)
-                    ->visible(fn() => !Auth::user()->hasRole('tutor')),
+                    ->visible($isManager),
                 Forms\Components\Textarea::make('comment1')
                     ->label('Tutor Comment')
                     ->rows(2)
-                    ->visible(fn() => Auth::user()->hasRole('tutor') || Auth::user()->hasRole('manager')),
+                    ->visible(fn() => $isTutor() || $isManager()),
                 Forms\Components\Textarea::make('comment2')
                     ->label('Parent Comment')
                     ->rows(2)
-                    ->visible(fn() => Auth::user()->hasRole('parent') || Auth::user()->hasRole('manager'))
-                    ->disabled(fn() => !Auth::user()->hasRole('parent')),
+                    ->visible(fn() => $isParent() || $isManager()),
             ]);
     }
 
@@ -103,6 +107,11 @@ class AttendancesRelationManager extends RelationManager
      */
     public function table(Table $table): Table
     {
+        // Define common visibility checks for roles
+        $isManager = fn() => Auth::user()->hasRole('manager');
+        $isTutor = fn() => Auth::user()->hasRole('tutor');
+        $isParent = fn() => Auth::user()->hasRole('parent');
+
         return $table
             ->recordTitleAttribute('subject')
             ->modifyQueryUsing(function (Builder $query) {
@@ -157,7 +166,7 @@ class AttendancesRelationManager extends RelationManager
                         default => 'gray',
                     })
                     ->sortable()
-                    ->visible(fn() => !Auth::user()->hasRole('tutor')),
+                    ->visible(fn() => !$isTutor()),
                 Tables\Columns\TextColumn::make('payment_status')
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
@@ -167,13 +176,13 @@ class AttendancesRelationManager extends RelationManager
                     })
                     ->label('Paid?')
                     ->sortable()
-                    ->visible(fn() => Auth::user()->hasRole('manager')),
+                    ->visible($isManager),
                 Tables\Columns\TextColumn::make('comment1')
-                    ->label('Comment 1')
+                    ->label('Tutor Comment')
                     ->limit(30)
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('comment2')
-                    ->label('Comment 2')
+                    ->label('Parent Comment')
                     ->limit(30)
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
@@ -191,62 +200,57 @@ class AttendancesRelationManager extends RelationManager
                 Tables\Actions\CreateAction::make()
                     ->label('Fill Today\'s Attendance')
                     ->visible(function () {
-                        $user = Auth::user();
-                        if (!$user->hasRole('tutor')) {
+                        // Action is only visible for tutors
+                        if (!Auth::user()->hasRole('tutor')) {
                             return false;
                         }
-                        // Check if attendance already exists for today
+                        // Check if attendance already exists for today to prevent duplicates
                         return !$this->getOwnerRecord()->attendances()->whereDate('scheduled_date', Carbon::today())->exists();
                     }),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                // Parent Approve Action
+                // Combined Approve action for both parents and managers
                 Tables\Actions\Action::make('approve')
-                    ->visible(fn($record) => Auth::user()->hasRole('parent') && in_array($record->status, ['pending', 'rejected']))
+                    ->visible(fn($record) => (Auth::user()->hasRole('parent') || Auth::user()->hasRole('manager')) && in_array($record->status, ['pending', 'rejected']))
                     ->action(fn($record) => $record->update(['status' => 'approved', 'approved_by_id' => Auth::user()->id]))
                     ->requiresConfirmation()
                     ->color('success')
-                    ->icon('heroicon-o-check-circle'),
-                // Parent Reject Action
+                    ->icon('heroicon-o-check-circle')
+                    ->tooltip('Approve this attendance record'),
+                // Combined Reject action for both parents and managers
                 Tables\Actions\Action::make('reject')
-                    ->visible(fn($record) => Auth::user()->hasRole('parent') && $record->status === 'pending')
+                    ->visible(fn($record) => (Auth::user()->hasRole('parent') || Auth::user()->hasRole('manager')) && $record->status === 'pending')
                     ->action(fn($record) => $record->update(['status' => 'rejected', 'approved_by_id' => Auth::user()->id]))
                     ->requiresConfirmation()
                     ->color('danger')
-                    ->icon('heroicon-o-x-circle'),
-                // Manager Approve Action
-                Tables\Actions\Action::make('approveAttendance')
-                    ->label('Approve Attendance')
-                    ->visible(fn($record) => Auth::user()->hasRole('manager') && in_array($record->status, ['pending', 'rejected']))
-                    ->action(fn($record) => $record->update(['status' => 'approved', 'approved_by_id' => Auth::user()->id]))
-                    ->color('success')
-                    ->icon('heroicon-o-check-circle')
-                    ->requiresConfirmation()
-                    ->tooltip('Approve this attendance record'),
+                    ->icon('heroicon-o-x-circle')
+                    ->tooltip('Reject this attendance record'),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make()
-                        ->visible(fn() => !Auth::user()->hasRole('parent')),
-                    // Parent Bulk Approve Action
+                        ->visible(fn() => !$isParent()), // Parents should not be able to delete records
+                    // Consolidated bulk approve for both parents and managers
                     Tables\Actions\BulkAction::make('approveSelected')
                         ->label('Approve Selected')
                         ->action(fn($records) => $records->each->update(['status' => 'approved', 'approved_by_id' => Auth::user()->id]))
                         ->requiresConfirmation()
                         ->color('success')
                         ->icon('heroicon-o-check')
-                        ->visible(fn() => Auth::user()->hasRole('parent')),
-                    // Parent Bulk Reject Action
+                        ->visible(fn() => $isParent() || $isManager())
+                        ->tooltip('Approve all selected records'),
+                    // Consolidated bulk reject for both parents and managers
                     Tables\Actions\BulkAction::make('rejectSelected')
                         ->label('Reject Selected')
                         ->action(fn($records) => $records->each->update(['status' => 'rejected', 'approved_by_id' => Auth::user()->id]))
                         ->requiresConfirmation()
                         ->color('danger')
                         ->icon('heroicon-o-x-circle')
-                        ->visible(fn() => Auth::user()->hasRole('parent')),
-                    // Parent Bulk Approve with Note Action
-                    BulkAction::make('approveSelectedWithComment')
+                        ->visible(fn() => $isParent() || $isManager())
+                        ->tooltip('Reject all selected records'),
+                    // Parent-specific bulk approve with a note
+                    Tables\Actions\BulkAction::make('approveSelectedWithComment')
                         ->label('Approve with Note')
                         ->form([
                             Forms\Components\Textarea::make('note')
@@ -265,17 +269,8 @@ class AttendancesRelationManager extends RelationManager
                         ->requiresConfirmation()
                         ->color('success')
                         ->icon('heroicon-o-chat-bubble-left')
-                        ->visible(fn() => Auth::user()->hasRole('parent')),
-                    // Manager Bulk Approve Action
-                    BulkAction::make('approveSelectedForManager')
-                        ->label('Approve Selected')
-                        ->action(function ($records) {
-                            $records->each(fn($record) => $record->update(['status' => 'approved', 'approved_by_id' => Auth::user()->id]));
-                        })
-                        ->requiresConfirmation()
-                        ->color('success')
-                        ->icon('heroicon-o-check')
-                        ->visible(fn() => Auth::user()->hasRole('manager')),
+                        ->visible($isParent())
+                        ->tooltip('Approve selected records and add a note'),
                 ]),
             ])
             ->modifyQueryUsing(fn(Builder $query) => $query->withoutGlobalScopes([
