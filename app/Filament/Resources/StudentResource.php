@@ -18,7 +18,6 @@ use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Forms\Components\Actions\Action;
 
-use App\Filament\Resources\StudentResource\Pages\WeeklySchedulePage;
 
 class StudentResource extends Resource
 {
@@ -401,6 +400,7 @@ class StudentResource extends Resource
     {
         return [
             AttendancesRelationManager::class,
+            
         ];
     }
     
@@ -414,8 +414,7 @@ class StudentResource extends Resource
             'create' => Pages\CreateStudent::route('/create'),
             'edit' => Pages\EditStudent::route('/{record}/edit'),
             'view' => Pages\ViewStudent::route('/{record}'),
-            
-            // 'weekly-schedule' => Pages\WeeklySchedulePage::route('/{record}/weekly-schedule'),
+
         ];
 
         
