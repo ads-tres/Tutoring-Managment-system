@@ -39,22 +39,29 @@ class TutorWeeklySchedule extends Page
             foreach ($student->scheduled_days as $day) {
                 $date = Carbon::parse($startOfWeek)->modify($day);
                 if ($date->between($startOfWeek, $endOfWeek)) {
-                    $schedule[] = [
-                        'date' => $date->toDateString(),
-                        'day' => ucfirst($day),
+                    $dayName = ucfirst($day);
+                    $schedule[$dayName][] = [
                         'time' => $student->start_time,
                         'student_name' => $student->full_name,
                     ];
-                    
                 }
-                
             }
-            // dd($schedule);
         }
 
-        return collect($schedule)->sortBy(['date', 'time'])->values()->toArray();
+        // Sort each day's schedule by time
+        foreach ($schedule as $day => $sessions) {
+            usort($sessions, function ($a, $b) {
+                return strtotime($a['time']) - strtotime($b['time']);
+            });
+            $schedule[$day] = $sessions;
+        }
+        // dd($schedule);
+
+        return $schedule;
+        
     }
 
+    
     protected static string $view = 'filament.pages.tutor-weekly-schedule';
 }
 
