@@ -51,6 +51,7 @@ class Student extends Model
         'initial_skills' => 'array',
         'start_date' => 'date',
         'scheduled_days' => 'array',
+        'starting_time' => 'datetime:H:i',
     ];
 
     /**
@@ -77,9 +78,31 @@ class Student extends Model
         return $this->hasMany(Attendance::class);
     }
 
-    public function maxMonthlySessions(): int
+    /** Total amount for one full payment period */
+    public function getPeriodTotalAttribute(): float
     {
-        $daysPerWeek = count($this->scheduled_days ?? []);
-        return $daysPerWeek * 4;
+        // Ensure properties are treated as numbers
+        $sessions = (int) $this->sessions_per_period;
+        $price = (float) $this->price_per_session;
+        return $sessions * $price;
+    }
+
+    /** Count of unpaid sessions */
+    public function getUnpaidSessionsCountAttribute(): int
+    {
+        // Ensure the paid column is cast correctly in the Attendance model
+        return $this->attendances()->where('payment_status', false)->count();
+    }
+
+    /** Total due for unpaid sessions */
+    public function getTotalDueAttribute(): float
+    {
+        return $this->unpaid_sessions_count * (float) $this->price_per_session;
+    }
+
+    /** Total completed sessions */
+    public function getTotalCompletedSessionsAttribute(): int
+    {
+        return $this->attendances()->count();
     }
 }

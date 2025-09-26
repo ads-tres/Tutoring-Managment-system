@@ -47,6 +47,13 @@ return new class extends Migration
             $table->string('student_image')->nullable();
             $table->string('parents_image')->nullable();
             $table->timestamps();
+            $table->unsignedSmallInteger('session_length_minutes')->nullable()->after('start_time');
+            $table->json('scheduled_days')->nullable()->after('status');
+            $table->foreignId('tutor_id')
+                  ->nullable()
+                  ->after('parent_id')
+                  ->constrained('users')
+                  ->onDelete('set null');
         });
     }
 

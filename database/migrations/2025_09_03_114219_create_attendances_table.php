@@ -23,10 +23,15 @@ return new class extends Migration {
             $table->integer('duration');  // in hours
             $table->text('comment1')->nullable();
             $table->text('comment2')->nullable();
-            $table->enum('status', ['rejected','pending', 'approved'])->default('pending');
+            $table->enum('status', ['rejected', 'pending', 'approved'])->default('pending');
             $table->enum('payment_status', ['paid', 'unpaid'])->default('unpaid');
             $table->timestamps();
-
+            $table->foreignId('approved_by_id')
+                ->nullable()
+                ->after('payment_status')
+                ->constrained('users')
+                ->onDelete('set null');
+            $table->enum('session_status', ['present', 'absent', 'late'])->nullable()->after('status');
         });
     }
 

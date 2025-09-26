@@ -17,6 +17,7 @@ use Closure;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Forms\Components\Actions\Action;
+use Filament\Forms\Components\TextInput;
 
 
 class StudentResource extends Resource
@@ -174,7 +175,25 @@ class StudentResource extends Resource
                     Forms\Components\TimePicker::make('end_time')->native(false),
                     Forms\Components\TextInput::make('session_length_minutes')->label('Session Length (minutes)')->numeric(),
                     Forms\Components\TextInput::make('session_duration')->label('Session Duration')->hint('e.g. 1 hour, 30 minutes'),
+                    TextInput::make('sessions_per_period')
+                        ->label('Sessions Per Period')
+                        ->numeric()
+                        ->required(),
+                    TextInput::make('price_per_session')
+                        ->label('Price Per Session')
+                        ->numeric()
+                        ->required(),
                 ])->columns(2),
+                TextInput::make('sessions_per_period')
+                ->numeric()
+                ->default(12)
+                ->label('Sessions Per Period'),
+
+            TextInput::make('price_per_session')
+                ->numeric()
+                ->prefix('ETB')
+                ->default(0)
+                ->label('Price Per Session'),
         ]);
     }
 
@@ -225,6 +244,20 @@ class StudentResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->visible(fn() => !Auth::user()->hasRole('tutor')),
                 Tables\Columns\TextColumn::make('created_at')->dateTime()->since()->sortable()->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('period_total')
+                ->label('Period Total')
+                ->money('ETB'),
+
+                Tables\Columns\TextColumn::make('unpaid_sessions_count')
+                ->label('Unpaid Sessions'),
+
+                Tables\Columns\TextColumn::make('total_due')
+                ->label('Total Due')
+                ->money('ETB'),
+
+                Tables\Columns\TextColumn::make('total_completed_sessions')
+                ->label('Total Completed Sessions'),
+                
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
