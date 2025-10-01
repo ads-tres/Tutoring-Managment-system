@@ -32,7 +32,7 @@ class CreateMessage extends CreateRecord
             // If sending to a role, ensure individual user ID is null
             $data['recipient_user_id'] = null;
         }
-
+        // dd($data);
         // 3. Remove the temporary control field before saving to the database
         unset($data['recipient_type']);
         

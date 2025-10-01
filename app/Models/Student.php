@@ -54,7 +54,7 @@ class Student extends Model
         'dob' => 'date',
         'initial_skills' => 'array',
         'start_date' => 'date',
-        'scheduled_date' => 'array',
+        'scheduled_days' => 'array',
         'starting_time' => 'datetime:H:i',
         'sessions_per_period' => 'integer', 
         'price_per_period' => 'float', 
