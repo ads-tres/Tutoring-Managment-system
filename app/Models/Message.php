@@ -14,6 +14,7 @@ class Message extends Model
         'sender_id',
         'content',
         'recipient_target',
+        'recipient_user_id'
     ];
     
     /**
@@ -23,6 +24,11 @@ class Message extends Model
     {
         return $this->belongsTo(User::class, 'sender_id');
     }
+
+    public function recipientUser(): BelongsTo
+{
+    return $this->belongsTo(User::class, 'recipient_user_id');
+}
 
     /**
      * Scope to filter messages intended for a specific user.
