@@ -14,15 +14,24 @@ return new class extends Migration
         Schema::create('messages', function (Blueprint $table) {
             $table->id();
             
-            // The user who sent the message (always the Manager in this system)
+            // The user who sent the message (always the Manager in this system) 
             $table->foreignId('sender_id')->constrained('users')->onDelete('cascade');
             
+            $table->string('subject'); 
+
             // The content of the message
-            $table->text('content');
-            
-            // Recipient target: stores the specific recipient identifier. 
-            // Examples: 'user:123', 'role:parent', 'role:tutor', 'ALL_USERS'
-            $table->string('recipient_target')->index();
+            $table->longText('content')->change();
+
+            // Add a column for sending messages to a single, specific user.
+            // It is nullable because messages can still be sent to a 'recipient_target' role.
+            $table->foreignId('recipient_user_id')
+                  ->nullable()
+                  ->after('sender_id')
+                  ->constrained('users') 
+                  ->onDelete('set null');
+
+            // Make the existing recipient_target nullable, as it will be null for individual messages.
+            $table->string('recipient_target')->nullable()->change();
             
             $table->timestamps();
         });
