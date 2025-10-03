@@ -34,6 +34,7 @@ return new class extends Migration {
             $table->string('house_number')->nullable();
             $table->string('street')->nullable();
             $table->string('landmark')->nullable();
+            $table->string('map_location', 500)->nullable();
             $table->string('school_name')->nullable();
             $table->enum('school_type', ['private', 'public', 'international'])->nullable();
             $table->string('grade')->nullable();
@@ -47,7 +48,7 @@ return new class extends Migration {
             $table->string('parents_image')->nullable();
             $table->timestamps();
             $table->unsignedSmallInteger('session_length_minutes')->nullable()->after('start_time');
-            $table->json('scheduled_days')->nullable()->after('status');
+            $table->json('scheduled_days')->nullable();
             $table->foreignId('tutor_id')
                 ->nullable()
                 ->after('parent_id')
@@ -61,7 +62,7 @@ return new class extends Migration {
                 $table->decimal('price_per_period', 8, 2)->default(100);
             }
             $table->decimal('balance', 10, 2)->default(0);
-            $table->date('period_start')->nullable()->after('balance');
+            $table->date('period_start')->nullable();
             $table->boolean('period_closed')->default(false);
         });
     }

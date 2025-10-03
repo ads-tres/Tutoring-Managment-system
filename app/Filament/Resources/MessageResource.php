@@ -70,11 +70,6 @@ class MessageResource extends Resource
                     Forms\Components\Hidden::make('recipient_target')->default($defaultRecipientRole),
                     Forms\Components\Hidden::make('recipient_user_id')->default(null),
                         
-                    Forms\Components\Placeholder::make('restricted_recipient_info')
-                        ->label('Recipient')
-                        ->content("Your message will be sent exclusively to the **{$defaultRecipientRole}** group.")
-                        ->helperText("You are only permitted to send messages to the management team.")
-                        ->columnSpanFull(),
                 ])->visible(fn () => !$canSendToAnywhere)->columns(1),
 
                 // === 2. UNRESTRICTED USER RECIPIENT FIELDS (Interactive) ===

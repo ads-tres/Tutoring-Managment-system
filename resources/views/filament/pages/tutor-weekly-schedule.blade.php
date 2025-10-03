@@ -8,7 +8,7 @@
                     <thead>
                         <tr>
                             {{-- Day Headers --}}
-                            @foreach(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as $day)
+                            @foreach(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday','Sataurday','Sunday'] as $day)
                                 <th scope="col" class="py-3 px-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-200 sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                                     {{ $day }}
                                 </th>
@@ -20,16 +20,18 @@
                             @php
                                 // Fetch the schedule data once
                                 $weeklySchedule = $this->getSchedule();
+                                // dump($weeklySchedule);
                             @endphp
 
                             
-                            @foreach(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as $day)
+                            @foreach(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday','Sataurday','Sunday'] as $day)
                                 <td class="px-3 py-4 text-sm align-top w-1/5">
                                     @if (isset($weeklySchedule[$day]) && count($weeklySchedule[$day]) > 0)
-                                        
+                                    
                                         
                                         <ul role="list" class="space-y-3">
                                             @foreach ($weeklySchedule[$day] as $session)
+                                            
                                                 <li class="p-3 rounded-xl border border-primary-300 dark:border-primary-600 bg-primary-50 dark:bg-gray-700 shadow-sm transition hover:shadow-md">
                                                     
                                                     

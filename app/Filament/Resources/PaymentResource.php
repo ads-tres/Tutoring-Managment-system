@@ -10,6 +10,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
+use Illuminate\Support\Facades\Auth; // Import Auth facade for role check
 
 class PaymentResource extends Resource
 {
@@ -18,8 +19,21 @@ class PaymentResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-presentation-chart-bar'; 
     protected static ?string $navigationLabel = 'Payment History';
 
+    protected static ?string $navigationGroup = 'Finance & Payments';
+    protected static ?string $slug = 'payment-history';
+
     // Disable creation/editing since payments should be recorded via the Student action
     protected static bool $canCreate = false;
+
+    /**
+     * Check if the currently authenticated user can view this resource in the navigation or sidebar.
+     * This ensures only users with 'accountant' or 'manager' roles can see it.
+     */
+    public static function canViewAny(): bool
+    {
+        // We assume the User model has the Spatie\Permission HasRoles trait for hasAnyRole()
+        return Auth::user() && Auth::user()->hasAnyRole(['accountant', 'manager']);
+    }
 
     public static function form(Form $form): Form
     {
@@ -64,8 +78,8 @@ class PaymentResource extends Resource
 
                 TextColumn::make('covered_sessions')
                     ->label('Sessions Covered')
-                    ->getStateUsing(fn (Payment $record) => count($record->covered_sessions) . ' session(s)')
-                    ->tooltip(fn (Payment $record) => 'IDs: ' . implode(', ', $record->covered_sessions)),
+                    ->getStateUsing(fn (Payment $record) => count(is_array($record->covered_sessions) ? $record->covered_sessions : json_decode($record->covered_sessions, true) ?? []) . ' session(s)')
+                    ->tooltip(fn (Payment $record) => 'IDs: ' . implode(', ', is_array($record->covered_sessions) ? $record->covered_sessions : json_decode($record->covered_sessions, true) ?? [])),
 
                 TextColumn::make('balance_after')
                     ->label('New Balance')

@@ -36,7 +36,7 @@ class Student extends Model
         'school_type',
         'grade',
         'frequency',
-        'scheduled_date',
+        'scheduled_days',
         'start_time',
         'session_length_minutes',
         'end_time',
@@ -48,6 +48,8 @@ class Student extends Model
         'sessions_per_period', 
         'price_per_period', 
         'balance', 
+        'map_location',
+        
     ];
 
     protected $casts = [

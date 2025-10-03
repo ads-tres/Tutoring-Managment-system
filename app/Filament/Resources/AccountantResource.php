@@ -22,6 +22,7 @@ class AccountantResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-currency-dollar';
     protected static ?string $navigationLabel = 'Payments Overview';
     protected static ?string $slug = 'payments-overview';
+    protected static ?string $navigationGroup = 'Finance & Payments';
 
     
     public static function getPages(): array

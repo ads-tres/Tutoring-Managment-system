@@ -7,6 +7,8 @@ use App\Filament\Resources\StudentResource\RelationManagers\AttendancesRelationM
 use App\Models\Student;
 use App\Models\Attendance;
 use Filament\Forms;
+use Filament\Forms\Components\Fieldset; // Added Fieldset component import
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -16,9 +18,6 @@ use Illuminate\Support\Facades\Auth;
 use Closure;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
-use Filament\Forms\Components\Actions\Action;
-use Filament\Forms\Components\TextInput;
-
 
 class StudentResource extends Resource
 {
@@ -110,6 +109,7 @@ class StudentResource extends Resource
                 ->collapsible()
                 ->collapsed()
                 ->schema([
+                    // Existing Address fields
                     Forms\Components\TextInput::make('region')->maxLength(255),
                     Forms\Components\TextInput::make('city')->maxLength(255),
                     Forms\Components\TextInput::make('subcity')->maxLength(255),
@@ -118,6 +118,18 @@ class StudentResource extends Resource
                     Forms\Components\TextInput::make('house_number')->maxLength(255),
                     Forms\Components\TextInput::make('street')->maxLength(255),
                     Forms\Components\TextInput::make('landmark')->maxLength(255),
+
+                    
+                    Fieldset::make('Map Location')
+                        ->schema([
+                            Forms\Components\TextInput::make('map_location')
+                                ->label('Google Maps Link / Coordinates')
+                                ->helperText('Paste a Google Maps shareable link (e.g., https://goo.gl/maps/XYZ) or GPS coordinates (e.g., 8.9806, 38.7578) or an address query.')
+                                ->placeholder('e.g., https://goo.gl/maps/XYZ')
+                                ->nullable()
+                                ->maxLength(500),
+                        ])->columns(1),
+                    
                 ])->columns(2),
 
             Forms\Components\Section::make('School & Session Details')
@@ -213,6 +225,33 @@ class StudentResource extends Resource
                 Tables\Columns\TextColumn::make('house_number')->label('House #')->searchable()->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('street')->searchable()->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('landmark')->searchable()->toggleable(isToggledHiddenByDefault: true),
+                
+                
+                Tables\Columns\TextColumn::make('map_location')
+                    ->label('Map Link')
+                    ->badge()
+                    ->color('primary')
+                    ->icon('heroicon-o-map-pin')
+                    ->openUrlInNewTab()
+                    ->url(function (Student $record): ?string {
+                        $location = $record->map_location;
+                        if (!$location) {
+                            return null;
+                        }
+
+                        // Use the value directly if it looks like a URL (Google Maps share link)
+                        if (str_starts_with($location, 'http')) {
+                            return $location;
+                        }
+
+                        // Otherwise, treat it as coordinates or a query string for search
+                        return 'https://www.google.com/maps/search/?api=1&query=' . urlencode($location);
+                    })
+                    // Only show 'View on Map' if the field is populated
+                    ->formatStateUsing(fn (?string $state) => $state ? 'View on Map' : null)
+                    ->toggleable(),
+                // ------------------------------------------
+
                 Tables\Columns\TextColumn::make('school_name')->searchable()->sortable()->toggleable(),
                 Tables\Columns\TextColumn::make('school_type')->sortable()->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('grade')->sortable()->toggleable(),

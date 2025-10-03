@@ -46,6 +46,7 @@ class TutorWeeklySchedule extends Page
                     ];
                 }
             }
+            
         }
 
         // Sort each day's schedule by time
@@ -55,7 +56,7 @@ class TutorWeeklySchedule extends Page
             });
             $schedule[$day] = $sessions;
         }
-        // dd($schedule);
+        
 
         return $schedule;
         
