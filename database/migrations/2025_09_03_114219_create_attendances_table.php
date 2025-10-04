@@ -29,10 +29,10 @@ return new class extends Migration {
             $table->timestamps();
             $table->foreignId('approved_by_id')
                 ->nullable()
-                ->after('payment_status')
+                
                 ->constrained('users')
                 ->onDelete('set null');
-            $table->enum('session_status', ['present', 'absent', 'late'])->nullable()->after('status');
+            $table->enum('session_status', ['present', 'absent', 'late'])->nullable();
             
         });
     }

@@ -46,7 +46,7 @@ class Student extends Model
         'student_image',
         'parents_image',
         'sessions_per_period', 
-        'price_per_period', 
+        'price_per_session', 
         'balance', 
         'map_location',
         

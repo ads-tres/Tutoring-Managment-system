@@ -14,6 +14,7 @@ use Filament\Tables\Actions\Action;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Collection;
 use App\Filament\Resources\AccountantResource\Pages;
+use Illuminate\Support\Facades\Auth;
 
 class AccountantResource extends Resource
 {
@@ -24,7 +25,12 @@ class AccountantResource extends Resource
     protected static ?string $slug = 'payments-overview';
     protected static ?string $navigationGroup = 'Finance & Payments';
 
-    
+    public static function canViewAny(): bool
+    {
+        // We assume the User model has the Spatie\Permission HasRoles trait for hasAnyRole()
+        return Auth::user() && Auth::user()->hasAnyRole(['accountant', 'manager']);
+    }
+
     public static function getPages(): array
     {
         return [

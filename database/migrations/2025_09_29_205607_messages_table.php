@@ -26,7 +26,7 @@ return new class extends Migration
             // It is nullable because messages can still be sent to a 'recipient_target' role.
             $table->foreignId('recipient_user_id')
                   ->nullable()
-                  ->after('sender_id')
+                  
                   ->constrained('users') 
                   ->onDelete('set null');
 

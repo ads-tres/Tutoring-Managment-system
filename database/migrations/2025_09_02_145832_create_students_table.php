@@ -47,14 +47,14 @@ return new class extends Migration {
             $table->string('student_image')->nullable();
             $table->string('parents_image')->nullable();
             $table->timestamps();
-            $table->unsignedSmallInteger('session_length_minutes')->nullable()->after('start_time');
+            $table->unsignedSmallInteger('session_length_minutes')->nullable();
             $table->json('scheduled_days')->nullable();
             $table->foreignId('tutor_id')
                 ->nullable()
-                ->after('parent_id')
+                
                 ->constrained('users')
                 ->onDelete('set null');
-            $table->unsignedInteger('sessions_per_period')->default(12)->after('status');
+            $table->unsignedInteger('sessions_per_period')->default(12);
             $table->decimal('price_per_session', 8, 2)->default(0);
             if (Schema::hasColumn('students', 'session_rate')) {
                 $table->renameColumn('session_rate', 'price_per_period');

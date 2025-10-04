@@ -34,7 +34,7 @@ class Attendance extends Model
     protected $casts = [
         'scheduled_date' => 'date',
         'actual_date' => 'date',
-        'payment_status' => 'boolean',
+        // 'payment_status' => 'boolean',
         'date' => 'date',
         'duration' => 'float',
         'period_number' => 'integer',

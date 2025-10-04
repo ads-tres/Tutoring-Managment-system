@@ -59,6 +59,22 @@ class AttendanceResource extends Resource
         // Managers and other roles see all attendance records.
         return Attendance::query();
     }
+    
+    /**
+     * Global access control: Only managers can create new records.
+     */
+    public static function canCreate(): bool
+    {
+        return Auth::user()->hasRole('manager');
+    }
+
+    /**
+     * Global access control: Only managers can edit records.
+     */
+    public static function canEdit(Model $record): bool
+    {
+        return Auth::user()->hasRole('manager');
+    }
 
     public static function form(Form $form): Form
     {
@@ -119,7 +135,7 @@ class AttendanceResource extends Resource
                 ]),
 
             Forms\Components\Textarea::make('reason')
-                ->label('Reschedule/Additional Reason')
+                ->label('Reschedule/Additional/Absence Reason')
                 ->rows(2)
                 ->maxLength(500)
                 ->visible(fn(Get $get) => in_array($get('type'), ['rescheduled', 'additional', 'absent']))
@@ -276,6 +292,7 @@ class AttendanceResource extends Resource
                     }),
             ])
             ->actions([
+                // Edit action is now controlled by the static canEdit() method, limiting it to managers.
                 Tables\Actions\EditAction::make(),
 
                 // Parent Approve Action (Visible to Parents, status is pending/rejected)
@@ -342,8 +359,9 @@ class AttendanceResource extends Resource
             ])
             ->bulkActions([
                 BulkActionGroup::make([
+                    // Bulk Delete is now visible only to managers.
                     Tables\Actions\DeleteBulkAction::make()
-                        ->visible(fn() => !$isParent), // Hide delete from parents
+                        ->visible(fn() => $isManager),
 
                     // Bulk Approve (Parent & Manager)
                     BulkAction::make('bulkApprove')
@@ -387,17 +405,18 @@ class AttendanceResource extends Resource
                 ]),
             ])
             ->headerActions([
-                // Standard Create Action (Visible to Managers/Admins to manually log an entry)
+                // Standard Create Action (Visibility remains, but is globally restricted by canCreate())
                 CreateAction::make()
-                    ->visible(!$isParent && !$isTutor)
+                    ->visible($isManager)
                     ->label('Add New Record'),
 
-                // Tutor "Fill Daily Attendance" Action (Wizard)
+                // Tutor "Fill Daily Attendance" Action (kept for tutors)
                 Tables\Actions\Action::make('fill_daily_attendance')
                     ->label('Fill Daily Attendance')
                     ->icon('heroicon-o-document-check')
-                    ->visible(fn() => $isTutor && !Attendance::where('tutor_id', $user->id)->whereDate('created_at', Carbon::today())->exists())
-                    ->form(function (Tables\Actions\Action $action) use ($user) {
+                    ->visible(fn() => Auth::user()->hasRole('tutor') && !Attendance::where('tutor_id', Auth::user()->id)->whereDate('created_at', Carbon::today())->exists())
+                    ->form(function (Tables\Actions\Action $action) {
+                        $user = Auth::user();
                         $today = strtolower(Carbon::now()->format('l'));
 
                         $studentsForToday = Student::where('tutor_id', $user->id)
@@ -406,90 +425,83 @@ class AttendanceResource extends Resource
                             ->get();
 
                         if ($studentsForToday->isEmpty()) {
-                            // Halt the action if there are no students and send a notification
-                            $action->halt();
                             Notification::make()
-                                ->title('No Scheduled Sessions')
-                                ->body('You have no students with sessions scheduled for today that require attendance logging.')
+                                ->title('No Sessions Today')
+                                ->body('You have no students with sessions scheduled for today that require attendance.')
                                 ->warning()
                                 ->send();
+
                             return [];
                         }
 
                         $steps = $studentsForToday->map(function ($student, $index) use ($user) {
-                            return Wizard\Step::make("{$student->full_name} ({$student->start_time})")
-                                ->description('Log attendance for the scheduled session.')
+                            return Forms\Components\Wizard\Step::make("{$student->full_name} ({$student->start_time})")
                                 ->schema([
                                     Forms\Components\Select::make("students.{$index}.session_status")
                                         ->label('Session Status')
                                         ->options([
                                             'present' => 'Present',
                                             'absent' => 'Absent',
-                                            'late' => 'Late (Treated as Present/On-Schedule)',
+                                            'late' => 'Late',
                                         ])
                                         ->default('present')
                                         ->live()
-                                        ->required()
-                                        ->native(false),
+                                        ->required(),
 
-                                    // Session Type, visible only if not absent
-                                    Fieldset::make('Session Details')
+                                    Forms\Components\Select::make("students.{$index}.type")
+                                        ->label('Session Type')
+                                        ->options([
+                                            'on-schedule' => 'On-Schedule',
+                                            'rescheduled' => 'Rescheduled',
+                                            'additional' => 'Additional Session',
+                                        ])
+                                        ->default('on-schedule')
+                                        ->live()
                                         ->visible(fn(Forms\Get $get) => $get("students.{$index}.session_status") !== 'absent')
-                                        ->schema([
-                                            Forms\Components\Select::make("students.{$index}.type")
-                                                ->label('Session Type')
-                                                ->options([
-                                                    'on-schedule' => 'On-Schedule',
-                                                    'rescheduled' => 'Rescheduled',
-                                                    'additional' => 'Additional Session',
-                                                ])
-                                                ->default('on-schedule')
-                                                ->live()
-                                                ->required()
-                                                ->native(false),
+                                        ->required(fn(Forms\Get $get) => $get("students.{$index}.session_status") !== 'absent'),
 
-                                            Forms\Components\DatePicker::make("students.{$index}.scheduled_date")
-                                                ->label('Scheduled Date')
-                                                ->native(false)
-                                                ->default(Carbon::today())
-                                                ->disabled(fn(Forms\Get $get) => $get("students.{$index}.type") === 'on-schedule'),
+                                    Forms\Components\DatePicker::make("students.{$index}.scheduled_date")
+                                        ->label('Scheduled Date')
+                                        ->native(false)
+                                        ->default(Carbon::now())
+                                        ->disabled(fn(Forms\Get $get) => $get("students.{$index}.type") === 'on-schedule' || $get("students.{$index}.session_status") === 'absent')
+                                        ->visible(fn(Forms\Get $get) => $get("students.{$index}.session_status") !== 'absent'),
 
-                                            Forms\Components\DatePicker::make("students.{$index}.actual_date")
-                                                ->label('Actual Session Date')
-                                                ->native(false)
-                                                ->default(Carbon::today())
-                                                ->visible(fn(Forms\Get $get) => in_array($get("students.{$index}.type"), ['rescheduled', 'additional']))
-                                                ->required(fn(Forms\Get $get) => in_array($get("students.{$index}.type"), ['rescheduled', 'additional'])),
+                                    Forms\Components\DatePicker::make("students.{$index}.actual_date")
+                                        ->label('Actual Date')
+                                        ->native(false)
+                                        ->default(Carbon::now())
+                                        ->visible(fn(Forms\Get $get) => in_array($get("students.{$index}.type"), ['rescheduled', 'additional']) && $get("students.{$index}.session_status") !== 'absent')
+                                        ->required(fn(Forms\Get $get) => in_array($get("students.{$index}.type"), ['rescheduled', 'additional']) && $get("students.{$index}.session_status") !== 'absent'),
 
-                                        ])->columns(3),
-
-                                    // Session Content, visible only if not absent
-                                    Fieldset::make('Content Covered')
+                                    Forms\Components\TextInput::make("students.{$index}.subject")
+                                        ->label('Subject')
+                                        ->placeholder('e.g., Math, Science, English')
                                         ->visible(fn(Forms\Get $get) => $get("students.{$index}.session_status") !== 'absent')
-                                        ->schema([
-                                            Forms\Components\TextInput::make("students.{$index}.subject")
-                                                ->label('Subject')
-                                                ->required(),
-                                            Forms\Components\TextInput::make("students.{$index}.topic")
-                                                ->label('Topic Covered')
-                                                ->required(),
-                                            Forms\Components\TextInput::make("students.{$index}.duration")
-                                                ->label('Duration (hours)')
-                                                ->numeric()
-                                                ->placeholder('e.g., 2')
-                                                ->hint('Duration in hours.')
-                                                ->required(),
-                                        ])->columns(3),
+                                        ->required(fn(Forms\Get $get) => $get("students.{$index}.session_status") !== 'absent'),
 
-                                    Forms\Components\Textarea::make("students.{$index}.reason")
-                                        ->label('Reschedule/Additional Reason')
+                                    Forms\Components\TextInput::make("students.{$index}.topic")
+                                        ->label('Topic Covered')
+                                        ->placeholder('e.g., Algebra, Chapter 3: Functions')
+                                        ->visible(fn(Forms\Get $get) => $get("students.{$index}.session_status") !== 'absent')
+                                        ->required(fn(Forms\Get $get) => $get("students.{$index}.session_status") !== 'absent'),
+
+                                    Forms\Components\TextInput::make("students.{$index}.duration")
+                                        ->label('Duration')
+                                        ->numeric()
+                                        ->placeholder('e.g., 2')
+                                        ->hint('Duration in hours.')
+                                        ->visible(fn(Forms\Get $get) => $get("students.{$index}.session_status") !== 'absent')
+                                        ->required(fn(Forms\Get $get) => $get("students.{$index}.session_status") !== 'absent'),
+
+                                    Forms\Components\TextInput::make("students.{$index}.reason")
+                                        ->label('Reason')
                                         ->placeholder('Enter reason for rescheduling or additional session...')
-                                        ->visible(fn(Forms\Get $get) => in_array($get("students.{$index}.type"), ['rescheduled', 'additional'])),
+                                        ->visible(fn(Forms\Get $get) => in_array($get("students.{$index}.type"), ['rescheduled', 'additional']) && $get("students.{$index}.session_status") !== 'absent'),
 
                                     Forms\Components\Textarea::make("students.{$index}.comment1")
                                         ->label('Tutor Comment')
-                                        ->placeholder('Enter your comments for this session...')
-                                        ->columnSpanFull(),
+                                        ->placeholder('Enter your comments for this session...'),
 
                                     Forms\Components\Hidden::make("students.{$index}.student_id")->default($student->id),
                                     Forms\Components\Hidden::make("students.{$index}.tutor_id")->default($user->id),
@@ -497,61 +509,46 @@ class AttendanceResource extends Resource
                         })->toArray();
 
                         return [
-                            Wizard::make($steps)->skippable(),
+                            Forms\Components\Wizard::make($steps)->skippable(),
                         ];
                     })
                     ->action(function (array $data) {
+                        // Check if the 'students' key exists before proceeding to prevent errors
                         if (!array_key_exists('students', $data)) {
                             return;
                         }
 
-                        $recordsCreated = 0;
                         $studentsData = $data['students'];
                         foreach ($studentsData as $sessionData) {
                             $student = Student::find($sessionData['student_id']);
                             if ($student) {
-                                $isAbsent = $sessionData['session_status'] === 'absent';
-                                $type = $isAbsent ? 'absent' : ($sessionData['type'] ?? 'on-schedule');
-
-                                // Default values for absent sessions
+                                // Provide default values for all possible missing fields.
                                 $attendanceData = [
                                     'status' => 'pending',
                                     'comment1' => $sessionData['comment1'] ?? null,
                                     'tutor_id' => $sessionData['tutor_id'],
-                                    'type' => $type,
+                                    'type' => $sessionData['session_status'] === 'absent' ? 'absent' : ($sessionData['type'] ?? 'on-schedule'),
+                                    'subject' => $sessionData['subject'] ?? ($sessionData['session_status'] === 'absent' ? 'Absent' : null),
+                                    'topic' => $sessionData['topic'] ?? ($sessionData['session_status'] === 'absent' ? 'Absent' : null),
+                                    'duration' => $sessionData['duration'] ?? ($sessionData['session_status'] === 'absent' ? 0 : null),
                                     'scheduled_date' => $sessionData['scheduled_date'] ?? Carbon::today(),
-                                    'payment_status' => 'unpaid',
-
-                                    // Fields only required/present if not absent
-                                    'subject' => $isAbsent ? 'Absent' : ($sessionData['subject'] ?? null),
-                                    'topic' => $isAbsent ? 'Absent' : ($sessionData['topic'] ?? null),
-                                    'duration' => $isAbsent ? 0 : ($sessionData['duration'] ?? null),
                                     'actual_date' => $sessionData['actual_date'] ?? null,
-                                    'reason' => $isAbsent ? 'Student was absent.' : ($sessionData['reason'] ?? null),
+                                    'reason' => $sessionData['reason'] ?? null,
                                 ];
 
                                 $student->attendances()->create($attendanceData);
-                                $recordsCreated++;
                             }
                         }
 
-                        if ($recordsCreated > 0) {
-                            Notification::make()
-                                ->title('Attendance Filled')
-                                ->body('Attendance records for ' . $recordsCreated . ' student(s) have been successfully saved for parent approval.')
-                                ->success()
-                                ->send();
-                        } else {
-                            Notification::make()
-                                ->title('No Records Saved')
-                                ->body('No new attendance records were created.')
-                                ->warning()
-                                ->send();
-                        }
+                        Notification::make()
+                            ->title('Attendance Filled')
+                            ->body('All daily attendance records have been successfully saved.')
+                            ->success()
+                            ->send();
                     })
-                    ->modalWidth('4xl')
-                    ->modalSubmitActionLabel('Save All Attendance')
-                    ->modalCancelActionLabel('Cancel Wizard'),
+                    ->modalWidth('2xl')
+                    ->modalSubmitActionLabel('Save Attendance')
+                    ->modalCancelActionLabel('Cancel'),
             ]);
     }
 

@@ -194,7 +194,9 @@ class StudentResource extends Resource
                     TextInput::make('price_per_session')
                         ->label('Price Per Session')
                         ->numeric()
-                        ->required(),
+                        ->required()
+                        ->visible(fn() => Auth::user()->hasRole('manager','parent')),
+
                 ])->columns(2),
         ]);
     }
@@ -273,19 +275,25 @@ class StudentResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->visible(fn() => !Auth::user()->hasRole('tutor')),
                 Tables\Columns\TextColumn::make('created_at')->dateTime()->since()->sortable()->toggleable(isToggledHiddenByDefault: true),
+                
+                // --- FINANCIAL COLUMNS HIDING FOR TUTORS ---
                 Tables\Columns\TextColumn::make('period_total')
-                ->label('Period Total')
-                ->money('ETB'),
+                    ->label('Period Total')
+                    ->money('ETB')
+                    ->visible(fn() => !Auth::user()->hasRole('tutor')), // HIDE FOR TUTOR
 
                 Tables\Columns\TextColumn::make('unpaid_sessions_count')
-                ->label('Unpaid Sessions'),
+                    ->label('Unpaid Sessions')
+                    ->visible(fn() => !Auth::user()->hasRole('tutor')), // HIDE FOR TUTOR
 
                 Tables\Columns\TextColumn::make('total_due')
-                ->label('Total Due')
-                ->money('ETB'),
+                    ->label('Total Due')
+                    ->money('ETB')
+                    ->visible(fn() => !Auth::user()->hasRole('tutor')), // HIDE FOR TUTOR
+                // ------------------------------------------
 
                 Tables\Columns\TextColumn::make('total_completed_sessions')
-                ->label('Total Completed Sessions'),
+                    ->label('Total Completed Sessions'),
                 
             ])
             ->filters([
@@ -337,6 +345,7 @@ class StudentResource extends Resource
                             return [];
                         }
 
+                        // Use a Forms\Components\Wizard to step through each student for attendance
                         $steps = $studentsForToday->map(function ($student, $index) use ($user) {
                             return Forms\Components\Wizard\Step::make("{$student->full_name} ({$student->start_time})")
                                 ->schema([
@@ -351,6 +360,7 @@ class StudentResource extends Resource
                                         ->live()
                                         ->required(),
 
+                                    // Session Type and related fields are hidden if status is 'absent'
                                     Forms\Components\Select::make("students.{$index}.type")
                                         ->label('Session Type')
                                         ->options([
@@ -366,7 +376,7 @@ class StudentResource extends Resource
                                     Forms\Components\DatePicker::make("students.{$index}.scheduled_date")
                                         ->label('Scheduled Date')
                                         ->native(false)
-                                        ->default(Carbon::now())
+                                        ->default(Carbon::today())
                                         ->disabled(fn(Forms\Get $get) => $get("students.{$index}.type") === 'on-schedule' || $get("students.{$index}.session_status") === 'absent')
                                         ->visible(fn(Forms\Get $get) => $get("students.{$index}.session_status") !== 'absent'),
 
@@ -426,8 +436,10 @@ class StudentResource extends Resource
                             $student = Student::find($sessionData['student_id']);
                             if ($student) {
                                 // Provide default values for all possible missing fields.
+                                // We use the session_status from the form for the Attendance model's status, 
+                                // and default to 'pending' as a safety net if a new status were introduced.
                                 $attendanceData = [
-                                    'status' => 'pending',
+                                    'status' => $sessionData['session_status'] ?? 'pending', // Use the selected status (present, absent, late)
                                     'comment1' => $sessionData['comment1'] ?? null,
                                     'tutor_id' => $sessionData['tutor_id'],
                                     'type' => $sessionData['session_status'] === 'absent' ? 'absent' : ($sessionData['type'] ?? 'on-schedule'),
