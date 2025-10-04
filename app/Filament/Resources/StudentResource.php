@@ -7,6 +7,8 @@ use App\Filament\Resources\StudentResource\RelationManagers\AttendancesRelationM
 use App\Models\Student;
 use App\Models\Attendance;
 use Filament\Forms;
+use Filament\Forms\Components\Fieldset; // Added Fieldset component import
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -16,8 +18,6 @@ use Illuminate\Support\Facades\Auth;
 use Closure;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
-use Filament\Forms\Components\Actions\Action;
-
 
 class StudentResource extends Resource
 {
@@ -109,6 +109,7 @@ class StudentResource extends Resource
                 ->collapsible()
                 ->collapsed()
                 ->schema([
+                    // Existing Address fields
                     Forms\Components\TextInput::make('region')->maxLength(255),
                     Forms\Components\TextInput::make('city')->maxLength(255),
                     Forms\Components\TextInput::make('subcity')->maxLength(255),
@@ -117,6 +118,18 @@ class StudentResource extends Resource
                     Forms\Components\TextInput::make('house_number')->maxLength(255),
                     Forms\Components\TextInput::make('street')->maxLength(255),
                     Forms\Components\TextInput::make('landmark')->maxLength(255),
+
+                    
+                    Fieldset::make('Map Location')
+                        ->schema([
+                            Forms\Components\TextInput::make('map_location')
+                                ->label('Google Maps Link / Coordinates')
+                                ->helperText('Paste a Google Maps shareable link (e.g., https://goo.gl/maps/XYZ) or GPS coordinates (e.g., 8.9806, 38.7578) or an address query.')
+                                ->placeholder('e.g., https://goo.gl/maps/XYZ')
+                                ->nullable()
+                                ->maxLength(500),
+                        ])->columns(1),
+                    
                 ])->columns(2),
 
             Forms\Components\Section::make('School & Session Details')
@@ -174,6 +187,16 @@ class StudentResource extends Resource
                     Forms\Components\TimePicker::make('end_time')->native(false),
                     Forms\Components\TextInput::make('session_length_minutes')->label('Session Length (minutes)')->numeric(),
                     Forms\Components\TextInput::make('session_duration')->label('Session Duration')->hint('e.g. 1 hour, 30 minutes'),
+                    TextInput::make('sessions_per_period')
+                        ->label('Sessions Per Period')
+                        ->numeric()
+                        ->required(),
+                    TextInput::make('price_per_session')
+                        ->label('Price Per Session')
+                        ->numeric()
+                        ->required()
+                        ->visible(fn() => Auth::user()->hasRole('manager','parent')),
+
                 ])->columns(2),
         ]);
     }
@@ -204,6 +227,33 @@ class StudentResource extends Resource
                 Tables\Columns\TextColumn::make('house_number')->label('House #')->searchable()->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('street')->searchable()->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('landmark')->searchable()->toggleable(isToggledHiddenByDefault: true),
+                
+                
+                Tables\Columns\TextColumn::make('map_location')
+                    ->label('Map Link')
+                    ->badge()
+                    ->color('primary')
+                    ->icon('heroicon-o-map-pin')
+                    ->openUrlInNewTab()
+                    ->url(function (Student $record): ?string {
+                        $location = $record->map_location;
+                        if (!$location) {
+                            return null;
+                        }
+
+                        // Use the value directly if it looks like a URL (Google Maps share link)
+                        if (str_starts_with($location, 'http')) {
+                            return $location;
+                        }
+
+                        // Otherwise, treat it as coordinates or a query string for search
+                        return 'https://www.google.com/maps/search/?api=1&query=' . urlencode($location);
+                    })
+                    // Only show 'View on Map' if the field is populated
+                    ->formatStateUsing(fn (?string $state) => $state ? 'View on Map' : null)
+                    ->toggleable(),
+                // ------------------------------------------
+
                 Tables\Columns\TextColumn::make('school_name')->searchable()->sortable()->toggleable(),
                 Tables\Columns\TextColumn::make('school_type')->sortable()->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('grade')->sortable()->toggleable(),
@@ -225,6 +275,26 @@ class StudentResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->visible(fn() => !Auth::user()->hasRole('tutor')),
                 Tables\Columns\TextColumn::make('created_at')->dateTime()->since()->sortable()->toggleable(isToggledHiddenByDefault: true),
+                
+                // --- FINANCIAL COLUMNS HIDING FOR TUTORS ---
+                Tables\Columns\TextColumn::make('period_total')
+                    ->label('Period Total')
+                    ->money('ETB')
+                    ->visible(fn() => !Auth::user()->hasRole('tutor')), // HIDE FOR TUTOR
+
+                Tables\Columns\TextColumn::make('unpaid_sessions_count')
+                    ->label('Unpaid Sessions')
+                    ->visible(fn() => !Auth::user()->hasRole('tutor')), // HIDE FOR TUTOR
+
+                Tables\Columns\TextColumn::make('total_due')
+                    ->label('Total Due')
+                    ->money('ETB')
+                    ->visible(fn() => !Auth::user()->hasRole('tutor')), // HIDE FOR TUTOR
+                // ------------------------------------------
+
+                Tables\Columns\TextColumn::make('total_completed_sessions')
+                    ->label('Total Completed Sessions'),
+                
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
@@ -275,6 +345,7 @@ class StudentResource extends Resource
                             return [];
                         }
 
+                        // Use a Forms\Components\Wizard to step through each student for attendance
                         $steps = $studentsForToday->map(function ($student, $index) use ($user) {
                             return Forms\Components\Wizard\Step::make("{$student->full_name} ({$student->start_time})")
                                 ->schema([
@@ -289,6 +360,7 @@ class StudentResource extends Resource
                                         ->live()
                                         ->required(),
 
+                                    // Session Type and related fields are hidden if status is 'absent'
                                     Forms\Components\Select::make("students.{$index}.type")
                                         ->label('Session Type')
                                         ->options([
@@ -304,7 +376,7 @@ class StudentResource extends Resource
                                     Forms\Components\DatePicker::make("students.{$index}.scheduled_date")
                                         ->label('Scheduled Date')
                                         ->native(false)
-                                        ->default(Carbon::now())
+                                        ->default(Carbon::today())
                                         ->disabled(fn(Forms\Get $get) => $get("students.{$index}.type") === 'on-schedule' || $get("students.{$index}.session_status") === 'absent')
                                         ->visible(fn(Forms\Get $get) => $get("students.{$index}.session_status") !== 'absent'),
 
@@ -364,8 +436,10 @@ class StudentResource extends Resource
                             $student = Student::find($sessionData['student_id']);
                             if ($student) {
                                 // Provide default values for all possible missing fields.
+                                // We use the session_status from the form for the Attendance model's status, 
+                                // and default to 'pending' as a safety net if a new status were introduced.
                                 $attendanceData = [
-                                    'status' => 'pending',
+                                    'status' => $sessionData['session_status'] ?? 'pending', // Use the selected status (present, absent, late)
                                     'comment1' => $sessionData['comment1'] ?? null,
                                     'tutor_id' => $sessionData['tutor_id'],
                                     'type' => $sessionData['session_status'] === 'absent' ? 'absent' : ($sessionData['type'] ?? 'on-schedule'),

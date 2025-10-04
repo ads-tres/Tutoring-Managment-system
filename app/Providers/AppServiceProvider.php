@@ -5,7 +5,7 @@ namespace App\Providers;
 use App\Models\Attendance;
 use App\Policies\AttendancePolicy;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Facades\Gate; // <-- Add this import
+use Illuminate\Support\Facades\Gate; 
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -25,3 +25,4 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Attendance::class, AttendancePolicy::class);
     }
 }
+

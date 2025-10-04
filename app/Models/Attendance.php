@@ -26,8 +26,18 @@ class Attendance extends Model
         'comment2',
         'approved_by_id',
         'session_status',
+        'period_number',
+        'date',
         
-    
+    ];
+
+    protected $casts = [
+        'scheduled_date' => 'date',
+        'actual_date' => 'date',
+        // 'payment_status' => 'boolean',
+        'date' => 'date',
+        'duration' => 'float',
+        'period_number' => 'integer',
     ];
 
     public function student(): BelongsTo

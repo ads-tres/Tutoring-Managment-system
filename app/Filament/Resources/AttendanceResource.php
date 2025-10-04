@@ -14,15 +14,16 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
-use Filament\Forms\Set;
+use Filament\Forms\Components\Wizard;
+use Filament\Forms\Components\Fieldset;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Filament\Tables\Actions\BulkAction;
-use Filament\Tables\Actions\Action;
 use Filament\Tables\Actions\BulkActionGroup;
-use Filament\Tables\Actions\DeleteBulkAction;
+use Filament\Tables\Actions\Action;
+use Filament\Tables\Actions\CreateAction;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
@@ -58,84 +59,128 @@ class AttendanceResource extends Resource
         // Managers and other roles see all attendance records.
         return Attendance::query();
     }
+    
+    /**
+     * Global access control: Only managers can create new records.
+     */
+    public static function canCreate(): bool
+    {
+        return Auth::user()->hasRole('manager');
+    }
+
+    /**
+     * Global access control: Only managers can edit records.
+     */
+    public static function canEdit(Model $record): bool
+    {
+        return Auth::user()->hasRole('manager');
+    }
 
     public static function form(Form $form): Form
     {
         return $form->schema([
+            // Student and Tutor fields
             Forms\Components\Select::make('student_id')
                 ->relationship('student', 'full_name')
                 ->required()
-                ->native(false),
+                ->native(false)
+                ->columnSpan(1),
 
             Forms\Components\Select::make('tutor_id')
                 ->relationship('tutor', 'name')
                 ->required()
-                ->native(false),
+                ->native(false)
+                ->columnSpan(1),
 
-            Forms\Components\Select::make('type')
-                ->options([
-                    'on-schedule' => 'On-Schedule',
-                    'additional' => 'Additional',
-                    'rescheduled' => 'Rescheduled',
-                    'absent' => 'Absent',
-                ])
-                ->required()
-                ->live()
-                ->native(false),
+            // Type and Date fields
+            Forms\Components\Fieldset::make('Session Details')->columns(3)->schema([
+                Forms\Components\Select::make('type')
+                    ->options([
+                        'on-schedule' => 'On-Schedule',
+                        'additional' => 'Additional',
+                        'rescheduled' => 'Rescheduled',
+                        'absent' => 'Absent',
+                    ])
+                    ->required()
+                    ->live()
+                    ->native(false),
 
-            Forms\Components\DatePicker::make('scheduled_date')
-                ->required()
-                ->native(false),
+                Forms\Components\DatePicker::make('scheduled_date')
+                    ->required()
+                    ->native(false),
 
-            Forms\Components\DatePicker::make('actual_date')
-                ->visible(fn(Get $get) => $get('type') === 'rescheduled')
-                ->native(false),
+                Forms\Components\DatePicker::make('actual_date')
+                    ->label('Actual Session Date')
+                    ->visible(fn(Get $get) => in_array($get('type'), ['rescheduled', 'additional']))
+                    ->required(fn(Get $get) => in_array($get('type'), ['rescheduled', 'additional']))
+                    ->native(false),
+            ]),
+
+
+            // Content and Duration fields
+            Forms\Components\Fieldset::make('Content and Duration')
+                ->columns(3)
+                ->visible(fn(Get $get) => $get('type') !== 'absent')
+                ->schema([
+                    Forms\Components\TextInput::make('subject')
+                        ->required(),
+                    Forms\Components\TextInput::make('topic')
+                        ->required(),
+                    Forms\Components\TextInput::make('duration')
+                        ->label('Duration (hours)')
+                        ->numeric()
+                        ->required()
+                        ->minValue(1)
+                        ->maxValue(8),
+                ]),
 
             Forms\Components\Textarea::make('reason')
-                ->label('Reschedule Reason')
+                ->label('Reschedule/Additional/Absence Reason')
                 ->rows(2)
                 ->maxLength(500)
-                ->visible(fn(Get $get) => $get('type') === 'rescheduled'),
+                ->visible(fn(Get $get) => in_array($get('type'), ['rescheduled', 'additional', 'absent']))
+                ->columnSpanFull(),
 
-            Forms\Components\TextInput::make('subject')
-                ->required()
-                ->visible(fn(Get $get) => $get('type') !== 'absent'),
-            Forms\Components\TextInput::make('topic')
-                ->required()
-                ->visible(fn(Get $get) => $get('type') !== 'absent'),
+            // Status fields
+            Forms\Components\Fieldset::make('Status')
+                ->columns(2)
+                ->schema([
+                    Forms\Components\Select::make('status')
+                        ->options([
+                            'pending' => 'Pending',
+                            'approved' => 'Approved',
+                            'rejected' => 'Rejected',
+                            'reschedule_requested' => 'Reschedule Requested'
+                        ])
+                        ->default('pending')
+                        ->required()
+                        ->native(false),
 
-            Forms\Components\TextInput::make('duration')
-                ->label('Duration (hours)')
-                ->numeric()
-                ->required()
-                ->minValue(1)
-                ->maxValue(8)
-                ->visible(fn(Get $get) => $get('type') !== 'absent'),
+                    Forms\Components\Select::make('payment_status')
+                        ->options(['unpaid' => 'Unpaid', 'paid' => 'Paid'])
+                        ->default('unpaid')
+                        ->required()
+                        ->native(false),
+                ]),
 
-            Forms\Components\Select::make('status')
-                ->options([
-                    'pending' => 'Pending',
-                    'approved' => 'Approved',
-                    'rejected' => 'Rejected',
-                    'reschedule_requested' => 'Reschedule Requested'
-                ])
-                ->default('pending')
-                ->required()
-                ->native(false),
 
-            Forms\Components\Select::make('payment_status')
-                ->options(['unpaid' => 'Unpaid', 'paid' => 'Paid'])
-                ->default('unpaid')
-                ->required()
-                ->native(false),
-
-            Forms\Components\Textarea::make('comment1')->label('Comment 1')->rows(2),
-            Forms\Components\Textarea::make('comment2')->label('Comment 2')->rows(2),
-        ]);
+            // Comment fields
+            Forms\Components\Fieldset::make('Comments')
+                ->columns(2)
+                ->schema([
+                    Forms\Components\Textarea::make('comment1')->label('Tutor Comment')->rows(2),
+                    Forms\Components\Textarea::make('comment2')->label('Parent/Manager Comment')->rows(2),
+                ]),
+        ])->columns(2);
     }
 
     public static function table(Table $table): Table
     {
+        $user = Auth::user();
+        $isParent = $user->hasRole('parent');
+        $isTutor = $user->hasRole('tutor');
+        $isManager = $user->hasRole('manager');
+
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('student.full_name')
@@ -151,17 +196,13 @@ class AttendanceResource extends Resource
                     ->searchable()
                     ->limit(20)
                     ->toggleable(),
-                Tables\Columns\TextColumn::make('topic')
-                    ->sortable()
-                    ->searchable()
-                    ->limit(20)
-                    ->toggleable(),
                 Tables\Columns\TextColumn::make('duration')
                     ->label('Duration (hrs)')
                     ->sortable()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('type')
                     ->badge()
+                    ->formatStateUsing(fn(string $state) => ucwords(str_replace('-', ' ', $state)))
                     ->color(fn(string $state): string => match ($state) {
                         'on-schedule' => 'primary',
                         'additional' => 'warning',
@@ -174,13 +215,6 @@ class AttendanceResource extends Resource
                 Tables\Columns\TextColumn::make('scheduled_date')
                     ->date()
                     ->sortable(),
-                Tables\Columns\TextColumn::make('actual_date')
-                    ->date()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('reason')
-                    ->label('Reschedule Reason')
-                    ->limit(30)
-                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
@@ -199,25 +233,25 @@ class AttendanceResource extends Resource
                         default => 'gray',
                     })
                     ->label('Paid?')
-                    ->sortable(),
+                    ->sortable()
+                    ->visible($isManager), // Only managers/admins typically track payment status
                 Tables\Columns\TextColumn::make('updated_by')
                     ->label('Updated By')
-                    ->getStateUsing(fn(Attendance $record) => $record->approvedBy?->name)
+                    ->getStateUsing(fn(Attendance $record) => $record->approvedBy?->name ?? 'N/A')
                     ->sortable()
-                    ->searchable()
                     ->toggleable(isToggledHiddenByDefault: true)
-                    ->visible(fn() => Auth::user()->hasRole('manager')),
+                    ->visible($isManager),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->since()
                     ->sortable()
-                    ->toggleable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('comment1')
-                    ->label('Comment 1')
+                    ->label('Tutor Comment')
                     ->limit(30)
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('comment2')
-                    ->label('Comment 2')
+                    ->label('Parent/Manager Comment')
                     ->limit(30)
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
@@ -228,7 +262,8 @@ class AttendanceResource extends Resource
                         'approved' => 'Approved',
                         'rejected' => 'Rejected',
                         'reschedule_requested' => 'Reschedule Requested'
-                    ]),
+                    ])
+                    ->label('Approval Status'),
                 Tables\Filters\SelectFilter::make('type')
                     ->options([
                         'on-schedule' => 'On-Schedule',
@@ -236,38 +271,56 @@ class AttendanceResource extends Resource
                         'rescheduled' => 'Rescheduled',
                         'absent' => 'Absent',
                     ]),
+                Tables\Filters\SelectFilter::make('payment_status')
+                    ->options(['unpaid' => 'Unpaid', 'paid' => 'Paid'])
+                    ->visible($isManager),
+                Tables\Filters\Filter::make('scheduled_date')
+                    ->form([
+                        Forms\Components\DatePicker::make('from'),
+                        Forms\Components\DatePicker::make('to'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['from'],
+                                fn (Builder $query, $date): Builder => $query->whereDate('scheduled_date', '>=', $date),
+                            )
+                            ->when(
+                                $data['to'],
+                                fn (Builder $query, $date): Builder => $query->whereDate('scheduled_date', '<=', $date),
+                            );
+                    }),
             ])
             ->actions([
+                // Edit action is now controlled by the static canEdit() method, limiting it to managers.
                 Tables\Actions\EditAction::make(),
-                // Parent Approve Action
-                Tables\Actions\Action::make('approve')
-                    ->visible(fn(Model $record) => Auth::user()->hasRole('parent') && in_array($record->status, ['pending', 'rejected']))
-                    ->action(fn(Model $record) => $record->update(['status' => 'approved', 'approved_by_id' => Auth::user()->id]))
-                    ->requiresConfirmation()
-                    ->color('success')
-                    ->icon('heroicon-o-check-circle'),
-                // Parent Reject Action
-                Tables\Actions\Action::make('reject')
-                    ->visible(fn(Model $record) => Auth::user()->hasRole('parent') && $record->status === 'pending')
-                    ->action(fn(Model $record) => $record->update(['status' => 'rejected', 'approved_by_id' => Auth::user()->id]))
-                    ->requiresConfirmation()
-                    ->color('danger')
-                    ->icon('heroicon-o-x-circle'),
-                // Manager Approve Action
-                Tables\Actions\Action::make('approveAttendance')
+
+                // Parent Approve Action (Visible to Parents, status is pending/rejected)
+                Tables\Actions\Action::make('parent_approve')
                     ->label('Approve')
-                    ->visible(fn(Model $record) => Auth::user()->hasRole('manager') && in_array($record->status, ['pending', 'rejected']))
-                    ->action(fn($record) => $record->update(['status' => 'approved', 'approved_by_id' => Auth::user()->id]))
+                    ->visible(fn(Model $record) => $isParent && in_array($record->status, ['pending', 'rejected']))
+                    ->action(fn(Model $record) => $record->update(['status' => 'approved', 'approved_by_id' => $user->id]))
+                    ->requiresConfirmation()
                     ->color('success')
                     ->icon('heroicon-o-check-circle')
+                    ->tooltip('Approve this session report.'),
+
+                // Parent Reject Action (Visible to Parents, status is pending)
+                Tables\Actions\Action::make('parent_reject')
+                    ->label('Reject')
+                    ->visible(fn(Model $record) => $isParent && $record->status === 'pending')
+                    ->action(fn(Model $record) => $record->update(['status' => 'rejected', 'approved_by_id' => $user->id]))
                     ->requiresConfirmation()
-                    ->tooltip('Approve this attendance record'),
-                // Tutor "Ask for Reschedule" Action
-                Tables\Actions\Action::make('ask_for_reschedule')
+                    ->color('danger')
+                    ->icon('heroicon-o-x-circle')
+                    ->tooltip('Reject this session report.'),
+
+                // Tutor "Ask for Reschedule" Action (Visible to Tutors for pending absent sessions)
+                Tables\Actions\Action::make('tutor_ask_for_reschedule')
                     ->label('Ask for Reschedule')
                     ->icon('heroicon-o-arrow-path')
                     ->color('warning')
-                    ->visible(fn(Model $record) => Auth::user()->hasRole('tutor') && $record->type === 'absent' && $record->status === 'pending')
+                    ->visible(fn(Model $record) => $isTutor && $record->type === 'absent' && $record->status === 'pending')
                     ->form([
                         Forms\Components\DatePicker::make('new_date')
                             ->label('New Reschedule Date')
@@ -285,74 +338,78 @@ class AttendanceResource extends Resource
                         'reason' => $data['reschedule_reason'],
                     ]))
                     ->requiresConfirmation()
-                    ->tooltip('Request a new date for this absent session'),
-                // Manager "Approve Reschedule" Action
-                Tables\Actions\Action::make('approve_reschedule')
-                    ->label('Approve Reschedule')
-                    ->icon('heroicon-o-check-circle')
+                    ->tooltip('Request a new date for this absent session.'),
+
+                // Manager Approve Action (Visible to Managers)
+                Tables\Actions\Action::make('manager_approve_attendance')
+                    ->label('Approve')
+                    ->visible(fn(Model $record) => $isManager && in_array($record->status, ['pending', 'rejected', 'reschedule_requested']))
+                    ->action(function ($record) use ($user) {
+                        $updateData = ['status' => 'approved', 'approved_by_id' => $user->id];
+                        // If approving a reschedule request, also update the type to 'rescheduled'
+                        if ($record->status === 'reschedule_requested') {
+                            $updateData['type'] = 'rescheduled';
+                        }
+                        $record->update($updateData);
+                    })
                     ->color('success')
-                    ->visible(fn(Model $record) => Auth::user()->hasRole('manager') && $record->status === 'reschedule_requested')
-                    ->action(fn(Attendance $record) => $record->update([
-                        'status' => 'approved',
-                        'type' => 'rescheduled',
-                    ]))
+                    ->icon('heroicon-o-check-circle')
                     ->requiresConfirmation()
-                    ->tooltip('Approve and update this attendance record for the rescheduled session'),
+                    ->tooltip('Approve this attendance record.'),
             ])
             ->bulkActions([
                 BulkActionGroup::make([
+                    // Bulk Delete is now visible only to managers.
                     Tables\Actions\DeleteBulkAction::make()
-                        ->visible(fn() => !Auth::user()->hasRole('parent')),
-                    // Parent Bulk Approve Action
-                    Tables\Actions\BulkAction::make('approveSelected')
-                        ->label('Approve Selected')
-                        ->action(fn($records) => $records->each->update(['status' => 'approved', 'approved_by_id' => Auth::user()->id]))
+                        ->visible(fn() => $isManager),
+
+                    // Bulk Approve (Parent & Manager)
+                    BulkAction::make('bulkApprove')
+                        ->label('Bulk Approve Selected')
+                        ->action(fn($records) => $records->each(fn($record) => $record->update(['status' => 'approved', 'approved_by_id' => $user->id])))
                         ->requiresConfirmation()
                         ->color('success')
                         ->icon('heroicon-o-check')
-                        ->visible(fn() => Auth::user()->hasRole('parent')),
+                        ->visible(fn() => $isParent || $isManager),
+
                     // Parent Bulk Reject Action
-                    Tables\Actions\BulkAction::make('rejectSelected')
+                    BulkAction::make('parentBulkReject')
                         ->label('Reject Selected')
-                        ->action(fn($records) => $records->each->update(['status' => 'rejected', 'approved_by_id' => Auth::user()->id]))
+                        ->action(fn($records) => $records->each(fn($record) => $record->update(['status' => 'rejected', 'approved_by_id' => $user->id])))
                         ->requiresConfirmation()
                         ->color('danger')
                         ->icon('heroicon-o-x-circle')
-                        ->visible(fn() => Auth::user()->hasRole('parent')),
+                        ->visible(fn() => $isParent),
+
                     // Parent Bulk Approve with Note Action
                     BulkAction::make('approveSelectedWithComment')
                         ->label('Approve with Note')
                         ->form([
                             Forms\Components\Textarea::make('note')
-                                ->label('Optional Note')
+                                ->label('Optional Note (Comment 2)')
                                 ->rows(2),
                         ])
-                        ->action(function ($records, array $data) {
-                            $records->each(function ($record) use ($data) {
+                        ->action(function ($records, array $data) use ($user) {
+                            $records->each(function ($record) use ($data, $user) {
                                 $record->update([
                                     'status' => 'approved',
                                     'comment2' => $data['note'],
-                                    'approved_by_id' => Auth::user()->id,
+                                    'approved_by_id' => $user->id,
                                 ]);
                             });
                         })
                         ->requiresConfirmation()
                         ->color('success')
                         ->icon('heroicon-o-chat-bubble-left')
-                        ->visible(fn() => Auth::user()->hasRole('parent')),
-                    // Manager Bulk Approve Action
-                    BulkAction::make('approveSelectedForManager')
-                        ->label('Approve Selected')
-                        ->action(function ($records) {
-                            $records->each(fn($record) => $record->update(['status' => 'approved', 'approved_by_id' => Auth::user()->id]));
-                        })
-                        ->requiresConfirmation()
-                        ->color('success')
-                        ->icon('heroicon-o-check')
-                        ->visible(fn() => Auth::user()->hasRole('manager')),
+                        ->visible(fn() => $isParent),
                 ]),
             ])
             ->headerActions([
+                // Standard Create Action (Visibility remains, but is globally restricted by canCreate())
+                CreateAction::make()
+                    ->visible($isManager)
+                    ->label('Add New Record'),
+
                 // Tutor "Fill Daily Attendance" Action (kept for tutors)
                 Tables\Actions\Action::make('fill_daily_attendance')
                     ->label('Fill Daily Attendance')
@@ -460,7 +517,7 @@ class AttendanceResource extends Resource
                         if (!array_key_exists('students', $data)) {
                             return;
                         }
-                        
+
                         $studentsData = $data['students'];
                         foreach ($studentsData as $sessionData) {
                             $student = Student::find($sessionData['student_id']);
@@ -492,29 +549,6 @@ class AttendanceResource extends Resource
                     ->modalWidth('2xl')
                     ->modalSubmitActionLabel('Save Attendance')
                     ->modalCancelActionLabel('Cancel'),
-                // New action for managers to add a new attendance record
-                // Tables\Actions\Action::make('add_new_attendance')
-                //     ->label('Add New Attendance')
-                //     ->icon('heroicon-o-plus')
-                //     ->color('primary')
-                //     ->visible(fn() => Auth::user()->hasRole('manager'))
-                //     ->form(fn(Form $form) => self::form($form))
-                //     ->action(function (array $data) {
-                //          // Check if the type is 'absent' and provide default values if needed
-                //         if ($data['type'] === 'absent') {
-                //             $data['subject'] = 'N/A';
-                //             $data['topic'] = 'N/A';
-                //             $data['duration'] = 0;
-                //         }
-                //         Attendance::create($data);
-                //         Notification::make()
-                //             ->title('Attendance record created')
-                //             ->body('A new attendance record has been successfully created.')
-                //             ->success()
-                //             ->send();
-                //     })
-                //     ->modalWidth('xl')
-                //     ->modalSubmitActionLabel('Create Record'),
             ]);
     }
 
