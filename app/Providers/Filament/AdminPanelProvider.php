@@ -19,6 +19,7 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use App\Filament\Widgets\MessageInboxWidget; 
+use App\Filament\Pages\Auth\EditProfile; 
 
 
 class AdminPanelProvider extends PanelProvider
@@ -59,7 +60,9 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-            ]);
+            ])
+            ->profile(EditProfile::class); ;
+            
     }
     
 }
