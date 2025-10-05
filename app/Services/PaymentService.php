@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services; 
+namespace App\Services;
 
 use App\Models\Attendance;
 use App\Models\Payment;
@@ -11,66 +11,96 @@ class PaymentService
 {
     /**
      * Apply a payment to the student's debt, starting with the oldest unpaid, approved sessions.
+     *
+     * @param Student $student The student receiving the payment.
+     * @param float $amount The total amount received from the payer.
+     * @param string|null $note Optional note for the payment.
+     * @return Payment|null The newly created Payment record, or null on failure.
      */
-    public function applyPayment(Student $student, float $amount): void
+    public function applyPayment(Student $student, float $amount, ?string $note = null): ?Payment
     {
-        DB::transaction(function () use ($student, $amount) {
+        return DB::transaction(function () use ($student, $amount, $note) {
+            
+            // 1. Initial State and Payment Pool
             $balanceBefore = (float) $student->balance;
-            $remaining = $amount;
+            // The payment pool is the new amount + existing credit
+            $paymentPool = $amount + $balanceBefore; 
+            $sessionPrice = (float) $student->price_per_session;
 
-            // Fetch approved, unpaid, non-absent sessions oldest first
-            $attendances = Attendance::where('student_id', $student->id)
+            if ($sessionPrice <= 0) {
+                // Handle case where pricing is not set, treat as full credit.
+                $student->update(['balance' => $paymentPool]);
+                
+                return Payment::create([
+                    'student_id'        => $student->id,
+                    'amount'            => $amount,
+                    'amount_applied'    => 0.00,
+                    'amount_credit'     => $amount,
+                    'balance_after'     => $paymentPool,
+                    'covered_sessions'  => [],
+                    'note'              => 'Price per session is zero. Amount added to credit. ' . $note,
+                ]);
+            }
+
+            // 2. Fetch billable debt sessions (approved, unpaid, not absent)
+            $attendances = $student->attendances()
                 ->where('status', 'approved')
-                ->where('payment_status', 'unpaid') // <-- FIXED: Use 'unpaid' string
-                ->where('session_status', '!=', 'absent')
-                ->orderBy('scheduled_date', 'asc') // <-- FIXED: Use the correct column name
+                ->where('payment_status', 'unpaid')
+                // ->where('session_status', '!=', 'absent')
+                ->orderBy('scheduled_date', 'asc')
                 ->get();
 
-            $coveredSessions = [];
-            $amountAppliedToDebt = 0.00; 
-
+            $coveredSessionIds = [];
+            $totalAppliedToSessions = 0.00;
+            
+            // 3. Apply payment pool to cover sessions one by one
             foreach ($attendances as $attendance) {
-                // Cost calculation: Rate * Duration (Assuming price_per_period is the rate per period/session)
-                // Assuming session cost is based on student's price_per_period property (price per session)
-                $sessionCost = (float) $student->price_per_period * (float) $attendance->duration;
+                $sessionCost = $sessionPrice; 
 
-                if ($remaining >= $sessionCost) {
-                    // Fully cover this session
-                    $attendance->update(['payment_status' => 'paid']); // <-- FIXED: Use 'paid' string
-                    $remaining -= $sessionCost;
-                    $amountAppliedToDebt += $sessionCost;
-                    $coveredSessions[] = $attendance->id;
+                if ($paymentPool >= $sessionCost) {
+                    // Fully cover this session and MARK AS PAID
+                    $attendance->update(['payment_status' => 'paid']);
+                    
+                    $paymentPool -= $sessionCost;
+                    $totalAppliedToSessions += $sessionCost;
+                    $coveredSessionIds[] = $attendance->id;
                 } else {
-                    // Partial payment - stop here, the session remains unpaid
-                    break;
+                    // Not enough money left to cover this session, stop here.
+                    break; 
                 }
             }
             
-            // 1. Update student balance: remaining amount becomes credit
-            $student->balance = $balanceBefore + $remaining;
-            $student->save();
+            // 4. Calculate final debt/credit allocation for logging
+            
+            // Total amount applied to debt is how much cost was covered
+            $totalDebtReduction = $totalAppliedToSessions; 
 
-            // 2. Record payment log
-            Payment::create([
-                'student_id'      => $student->id,
-                'amount'          => $amount,
-                'amount_applied'  => $amountAppliedToDebt,
-                'amount_credit'   => $remaining,
-                'balance_after'   => $student->balance,
-                'covered_sessions' => $coveredSessions,
-                'note'            => "Applied payment. Old credit balance: " . number_format($balanceBefore, 2)
+            // How much of the NEW PAYMENT went toward debt vs credit
+            if ($totalDebtReduction > $balanceBefore) {
+                // If debt reduction exceeds the old balance, the new payment was used for debt
+                $newPaymentAppliedToDebt = $totalDebtReduction - $balanceBefore; 
+                $amountConvertedToCredit = max(0, $amount - $newPaymentAppliedToDebt); 
+            } else {
+                // If old balance covered all debt reduction, the full new payment is credit
+                $newPaymentAppliedToDebt = 0.00;
+                $amountConvertedToCredit = $amount;
+            }
+
+            // 5. Update Student's Credit Balance (final remaining payment pool)
+            $student->update([
+                'balance' => $paymentPool, 
             ]);
 
-            // 3. Check for period closing (Optional, assuming this logic is correct)
-            // $this->checkAndClosePeriod($student); 
+            // 6. Record payment log
+            return Payment::create([
+                'student_id'        => $student->id,
+                'amount'            => $amount,
+                'amount_applied'    => $newPaymentAppliedToDebt,
+                'amount_credit'     => $amountConvertedToCredit,
+                'balance_after'     => $paymentPool,
+                'covered_sessions'  => $coveredSessionIds,
+                'note'              => $note,
+            ]);
         });
     }
-
-    // /**
-    //  * Checks if the required number of sessions for the current period have been paid.
-    //  */
-    // private function checkAndClosePeriod(Student $student): void
-    // {
-    //     // ... period closing logic, ensure it also uses 'paid'/'unpaid' strings and correct date columns
-    // }
 }

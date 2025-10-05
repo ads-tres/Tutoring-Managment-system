@@ -2,17 +2,14 @@
 
 namespace App\Filament\Resources;
 
-use App\Models\Attendance;
 use App\Models\Student;
 use App\Services\PaymentService;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Actions\BulkAction;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Collection;
 use App\Filament\Resources\AccountantResource\Pages;
 use Illuminate\Support\Facades\Auth;
 
@@ -44,11 +41,9 @@ class AccountantResource extends Resource
             ->columns([
                 TextColumn::make( 'full_name')->label('Student Name')->searchable(),
 
-                // Should now correctly count sessions where payment_status is false (unpaid)
                 TextColumn::make('unpaid_sessions_count')
                     ->label('Unpaid Sessions'),
 
-                // rawDebtBeforeCredit should now show the total cost of those unpaid sessions
                 TextColumn::make('raw_debt_before_credit')
                     ->label('Total Raw Debt')
                     ->money('ETB', 0)
@@ -60,7 +55,8 @@ class AccountantResource extends Resource
                     ->color(fn (float $state): string => $state > 0 ? 'success' : 'gray')
                     ->description('Pre-paid amount (credit).'),
                     
-                TextColumn::make('total_due')
+                // Use absolute value for display, but the accessor calculates debt-credit
+                TextColumn::make('total_due') 
                     ->label('Total Amount Due (Net)')
                     ->money('ETB', 0)
                     ->color(fn (float $state): string => $state > 0 ? 'danger' : 'success')
@@ -71,7 +67,6 @@ class AccountantResource extends Resource
                     ->money('ETB', 0), 
             ])
             ->actions([
-                // ACTION: Record a payment
                 Action::make('makePayment')
                     ->label('Record Payment')
                     ->icon('heroicon-o-credit-card')
@@ -84,7 +79,6 @@ class AccountantResource extends Resource
                             ->required()
                             ->default(0.00)
                             ->minValue(0.00)
-                            // ->mask('9,999,999.99')
                             ->placeholder('e.g., 5000.00'),
                         
                         TextInput::make('note')
@@ -93,11 +87,29 @@ class AccountantResource extends Resource
                             ->maxLength(255),
                     ])
                     ->action(function (Student $record, array $data, PaymentService $paymentService) {
-                        $paymentService->applyPayment($record, (float)$data['amount']);
+                        $payment = $paymentService->applyPayment(
+                            $record, 
+                            (float)$data['amount'],
+                            $data['note'] ?? null
+                        );
+
+                        if (!$payment) {
+                             return \Filament\Notifications\Notification::make()
+                                ->title('Payment Failed')
+                                ->body('Could not process payment. Check if session price is set.')
+                                ->danger()
+                                ->send();
+                        }
                         
+                        $appliedCount = count($payment->covered_sessions);
+                        $applied = number_format($payment->amount_applied, 2);
+                        $credit = number_format($payment->amount_credit, 2);
+                        
+                        $body = "Covered **{$appliedCount}** sessions (ETB {$applied} applied to debt). Added ETB {$credit} to credit. New balance: ETB " . number_format($payment->balance_after, 2) . ".";
+
                         return \Filament\Notifications\Notification::make()
                             ->title('Payment Recorded')
-                            ->body("ETB " . number_format($data['amount'], 2) . " applied to {$record->full_name}'s account.")
+                            ->body($body)
                             ->success()
                             ->send();
                     }),

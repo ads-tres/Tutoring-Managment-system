@@ -81,76 +81,42 @@ class Student extends Model
     
     // --- Accessors for Billing ---
 
-    /**
-     * Total amount for one full payment period (Period Total column).
-     */
     public function getPeriodTotalAttribute(): float
     {
         $sessions = (int) $this->sessions_per_period;
-        $price = (float) $this->price_per_period; 
+        $price = (float) $this->price_per_session;
         return $sessions * $price;
-        }
+    }
 
     /**
-     * Count of unpaid, billable sessions (Unpaid Sessions column).
+     * Count of unpaid, billable sessions (Approved and not Absent).
      */
     public function getUnpaidSessionsCountAttribute(): int
     {
-        // return $this->attendances()
-        //     ->where('status', 'approved')
-        //     ->where('payment_status', 'unpaid')
-        //     ->where('session_status', '!=', 'absent') 
-        //     ->count();
-
         return $this->attendances()
-        ->where('status', 'approved')
-        ->where('payment_status', 'unpaid')
-        // ->where('session_status', '!=', 'absent') 
-        ->sum('duration'); 
+            ->where('status', 'approved')
+            ->where('payment_status', 'unpaid')
+            // ->where('session_status', '!=', 'absent')
+            // ->count(); 
+            ->sum('duration');
     }
     
-    /** 
-     * Calculates the Raw Debt Before Credit (Total Raw Debt column).
+    /** * Calculates the Raw Debt Before Credit (Total cost of all unpaid sessions).
      */
     public function getRawDebtBeforeCreditAttribute(): float
     {
         $unpaidCount = $this->unpaid_sessions_count; 
-        return $unpaidCount * (float) $this->price_per_period; 
+        return $unpaidCount * (float) $this->price_per_session;
     }
 
     /**
-     * Calculates the total NET amount due (Total Amount Due (Net) column).
+     * Calculates the total NET amount due (Debt minus Credit/Balance).
+     * This value can be negative if the student has excess credit.
      */
     public function getTotalDueAttribute(): float
     {
         $rawDebt = $this->raw_debt_before_credit; 
-        $netDue = $rawDebt - (float) $this->balance;
-        return max(0, $netDue);
-    }
-
-    public function getTotalCompletedSessionsAttribute(): int
-    {
-        return $this->attendances()->count();
-    }
-
-    /**
-     * Function to mark a full period's worth of sessions as paid, starting with the oldest.
-     */
-    public function markthesessionsinsideoneperiod(){
-
-        $unpaidCount = $this->unpaid_sessions_count; 
-        // 1. Get the IDs of the oldest unpaid, approved, and non-absent sessions
-        $sessionIds = $this->attendances()
-            ->where('payment_status', 'unpaid')
-            ->where('status', 'approved')
-            // ->where('session_status', '!=', 'absent') 
-            ->orderBy('scheduled_date', 'asc')        
-            ->limit($this->sessions_per_period)
-            ->pluck('id');
-
-        // 2. Update the records found in the collection to 'paid'
-        return $this->attendances()
-            ->whereIn('id', $sessionIds)
-            ->update(['payment_status' => 'paid']); 
+        // Debt - Credit = Net Due. This is the correct calculation.
+        return $rawDebt - (float) $this->balance; 
     }
 }
