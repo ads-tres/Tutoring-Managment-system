@@ -42,7 +42,7 @@ class AccountantResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('full_name')->label('Student Name')->searchable(),
+                TextColumn::make( 'full_name')->label('Student Name')->searchable(),
 
                 // Should now correctly count sessions where payment_status is false (unpaid)
                 TextColumn::make('unpaid_sessions_count')
@@ -83,7 +83,7 @@ class AccountantResource extends Resource
                             ->numeric()
                             ->required()
                             ->default(0.00)
-                            ->minValue(0.01)
+                            ->minValue(0.00)
                             // ->mask('9,999,999.99')
                             ->placeholder('e.g., 5000.00'),
                         

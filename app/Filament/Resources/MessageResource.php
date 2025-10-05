@@ -33,6 +33,8 @@ class MessageResource extends Resource
         return $roles;
     }
 
+   
+
     public static function getEloquentQuery(): Builder
     {
         $query = parent::getEloquentQuery();

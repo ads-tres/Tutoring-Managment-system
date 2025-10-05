@@ -13,7 +13,7 @@ class Payment extends Model
     protected $fillable = [
         'student_id',
         'amount',
-        'amount_applied', // New field to track debt coverage
+        'amount_applied', // field to track debt coverage
         'balance_after',
         'covered_sessions',
         'note',

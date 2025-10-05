@@ -61,6 +61,7 @@ class Student extends Model
         'sessions_per_period' => 'integer', 
         'price_per_period' => 'float', 
         'balance' => 'float', 
+        // 'duration' => 'integer',
     ];
 
     public function parent(): BelongsTo
@@ -88,21 +89,27 @@ class Student extends Model
         $sessions = (int) $this->sessions_per_period;
         $price = (float) $this->price_per_period; 
         return $sessions * $price;
-    }
+        }
 
     /**
      * Count of unpaid, billable sessions (Unpaid Sessions column).
      */
     public function getUnpaidSessionsCountAttribute(): int
     {
+        // return $this->attendances()
+        //     ->where('status', 'approved')
+        //     ->where('payment_status', 'unpaid')
+        //     ->where('session_status', '!=', 'absent') 
+        //     ->count();
+
         return $this->attendances()
-            ->where('status', 'approved')
-            ->where('payment_status', 'unpaid')
-            ->where('session_status', '!=', 'absent') 
-            ->count();
+        ->where('status', 'approved')
+        ->where('payment_status', 'unpaid')
+        // ->where('session_status', '!=', 'absent') 
+        ->sum('duration'); 
     }
     
-    /**
+    /** 
      * Calculates the Raw Debt Before Credit (Total Raw Debt column).
      */
     public function getRawDebtBeforeCreditAttribute(): float
@@ -130,11 +137,13 @@ class Student extends Model
      * Function to mark a full period's worth of sessions as paid, starting with the oldest.
      */
     public function markthesessionsinsideoneperiod(){
+
+        $unpaidCount = $this->unpaid_sessions_count; 
         // 1. Get the IDs of the oldest unpaid, approved, and non-absent sessions
         $sessionIds = $this->attendances()
             ->where('payment_status', 'unpaid')
             ->where('status', 'approved')
-            ->where('session_status', '!=', 'absent') 
+            // ->where('session_status', '!=', 'absent') 
             ->orderBy('scheduled_date', 'asc')        
             ->limit($this->sessions_per_period)
             ->pluck('id');

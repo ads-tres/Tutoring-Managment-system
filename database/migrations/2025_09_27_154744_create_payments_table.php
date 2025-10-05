@@ -12,16 +12,16 @@ return new class extends Migration {
             $table->foreignId('student_id')->constrained()->cascadeOnDelete();
 
             // The total amount received from the payer
-            $table->decimal('amount', 10, 2)->comment('Total amount received in this transaction.'); 
+            $table->decimal('amount', 10, 2)->comment('Total amount received in this transaction.')->default(0); 
                 
             // The amount used to settle debt (should be <= amount)
-            $table->decimal('amount_applied', 10, 2)->comment('Amount applied directly to debt.');
+            $table->decimal('amount_applied', 10, 2)->comment('Amount applied directly to debt.')->default(0);
             
             // The remaining amount that became credit (amount - amount_applied)
-            $table->decimal('amount_credit', 10, 2)->comment('Amount converted to credit/balance.');
+            $table->decimal('amount_credit', 10, 2)->comment('Amount converted to credit/balance.')->default(0);
             
             // The student's balance after this transaction
-            $table->decimal('balance_after', 10, 2)->comment('Student balance/credit after payment.');
+            $table->decimal('balance_after', 10, 2)->comment('Student balance/credit after payment.')->default(0);
             
             // An array of session IDs covered by this payment
             // Using 'json' to store the array of covered session IDs

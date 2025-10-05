@@ -20,18 +20,17 @@ return new class extends Migration
             $table->string('subject'); 
 
             // The content of the message
-            $table->longText('content')->change();
+            $table->longText('content');
 
             // Add a column for sending messages to a single, specific user.
             // It is nullable because messages can still be sent to a 'recipient_target' role.
             $table->foreignId('recipient_user_id')
                   ->nullable()
-                  
                   ->constrained('users') 
                   ->onDelete('set null');
 
             // Make the existing recipient_target nullable, as it will be null for individual messages.
-            $table->string('recipient_target')->nullable()->change();
+            $table->string('recipient_target')->nullable();
             
             $table->timestamps();
         });
