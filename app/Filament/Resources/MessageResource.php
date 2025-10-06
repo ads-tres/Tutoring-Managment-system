@@ -202,6 +202,7 @@ class MessageResource extends Resource
         $canViewRestrictedColumns = $canEdit; // Same restriction applies
 
         return $table
+        ->defaultSort('created_at', 'desc')
             ->columns([
                 // === HIDDEN FOR NON-MANAGERS ===
                 Tables\Columns\TextColumn::make('sender.name')

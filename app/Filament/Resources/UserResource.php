@@ -50,6 +50,7 @@ class UserResource extends Resource
     {
         return $table
             ->columns([
+                Tables\Columns\TextColumn::make('Roll No.')->label('Roll No.')->rowIndex(),
                 Tables\Columns\TextColumn::make('name')->label('First Name')->searchable(),
                 Tables\Columns\TextColumn::make('email')->searchable(),
                 Tables\Columns\TextColumn::make('roles')

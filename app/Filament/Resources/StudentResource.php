@@ -18,6 +18,10 @@ use Illuminate\Support\Facades\Auth;
 use Closure;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
+use Filament\Tables\Filters\SelectFilter; 
+use Filament\Tables\Filters\Filter; 
+use Filament\Forms\Components\DatePicker;
+use Filament\Tables\Columns\IndexColumn;
 
 class StudentResource extends Resource
 {
@@ -205,6 +209,7 @@ class StudentResource extends Resource
     {
         return $table
             ->columns([
+                Tables\Columns\TextColumn::make('Roll No.')->label('Roll No.')->rowIndex(),
                 Tables\Columns\ImageColumn::make('student_image')->label('Student Image')->circular()->defaultImageUrl(url('/images/placeholder.svg'))->toggleable(),
                 Tables\Columns\ImageColumn::make('parents_image')->label('Parents\' Image')->circular()->defaultImageUrl(url('/images/placeholder.svg'))->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('full_name')->searchable()->sortable(),
@@ -293,23 +298,113 @@ class StudentResource extends Resource
                     ->visible(fn() => !Auth::user()->hasRole('tutor')), // HIDE FOR TUTOR
                 // ------------------------------------------
 
-                // Tables\Columns\TextColumn::make('total_completed_sessions')
-                //     ->label('Total Completed Sessions'),
+                Tables\Columns\TextColumn::make('sessions_per_period')
+                    ->label('Session Per Period'),
 
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('status')
+                // Existing Filters
+                SelectFilter::make('status')
                     ->options([
                         'active' => 'Active',
                         'inactive' => 'Inactive',
                     ])
                     ->visible(fn() => !Auth::user()->hasRole('tutor')),
-                Tables\Filters\SelectFilter::make('school_type')
+                SelectFilter::make('school_type')
                     ->options([
                         'private' => 'Private',
                         'public' => 'Public',
                         'international' => 'International',
                     ]),
+
+                // --- NEW FILTERS REQUESTED BY USER ---
+
+                // 1. Filter by Tutor
+                SelectFilter::make('tutor_id')
+                    ->relationship('tutor', 'name', fn(Builder $query) => $query->whereHas('roles', fn($q) => $q->where('name', 'tutor')))
+                    ->label('Tutor')
+                    ->searchable()
+                    ->preload(),
+
+                // 2. Filter by Subcity
+                SelectFilter::make('subcity')
+                    ->options(Student::distinct()->pluck('subcity', 'subcity')->filter()->toArray()) // Fetching distinct non-empty subcities
+                    ->label('Sub-city')
+                    ->searchable()
+                    ,
+
+                // 3. Filter by Grade
+                SelectFilter::make('grade')
+                    ->options(Student::distinct()->orderBy('grade')->pluck('grade', 'grade')->filter()->toArray()) // Fetching distinct non-empty grades
+                    ->label('Grade')
+                    ->searchable()
+                    ,
+
+                // 4. Filter by School (school_name)
+                SelectFilter::make('school_name')
+                    ->options(Student::distinct()->pluck('school_name', 'school_name')->filter()->toArray()) // Fetching distinct non-empty school names
+                    ->label('School Name')
+                    ->searchable()
+                    ,
+
+                // 5. Filter by Price Per Session (Range Filter)
+                Filter::make('price_per_session')
+                    ->label('Price Per Session (ETB)')
+                    ->visible(fn() => !Auth::user()->hasRole('tutor'))
+                    ->indicator('Price Range')
+                    ->form([
+                        Forms\Components\TextInput::make('price_from')
+                            ->label('Min Price')
+                            ->numeric(),
+                        Forms\Components\TextInput::make('price_to')
+                            ->label('Max Price')
+                            ->numeric(),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['price_from'] ?? null,
+                                fn(Builder $query, $price): Builder => $query->where('price_per_session', '>=', $price),
+                            )
+                            ->when(
+                                $data['price_to'] ?? null,
+                                fn(Builder $query, $price): Builder => $query->where('price_per_session', '<=', $price),
+                            );
+                    }),
+
+
+                // 6. Filter by Start Date (Date Range Filter)
+                Filter::make('start_date')
+                    ->label('Start Date Range')
+                    ->form([
+                        DatePicker::make('start_date_from')->label('From')->native(false),
+                        DatePicker::make('start_date_to')->label('To')->native(false),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['start_date_from'],
+                                fn(Builder $query, $date): Builder => $query->whereDate('start_date', '>=', $date),
+                            )
+                            ->when(
+                                $data['start_date_to'],
+                                fn(Builder $query, $date): Builder => $query->whereDate('start_date', '<=', $date),
+                            );
+                    }),
+                    
+                        Tables\Filters\SelectFilter::make('status')
+                            ->options([
+                                'active' => 'Active',
+                                'inactive' => 'Inactive',
+                            ])
+                            ->visible(fn() => !Auth::user()->hasRole('tutor')),
+                        Tables\Filters\SelectFilter::make('school_type')
+                            ->options([
+                                'private' => 'Private',
+                                'public' => 'Public',
+                                'international' => 'International',
+                            ]),
+                    
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),

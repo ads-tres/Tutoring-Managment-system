@@ -13,6 +13,14 @@ use Filament\Tables\Actions\Action;
 use Filament\Tables\Table;
 use App\Filament\Resources\AccountantResource\Pages;
 use Illuminate\Support\Facades\Auth;
+use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\TernaryFilter;
+use Filament\Forms\Components\Fieldset;
+use Filament\Forms\Components\Hidden;
+use Filament\Forms\Components\NumericInput;
+use Filament\Notifications\Notification;
+use Illuminate\Database\Eloquent\Builder;
 
 class AccountantResource extends Resource
 {
@@ -34,7 +42,7 @@ class AccountantResource extends Resource
             'index' => Pages\ListAccountants::route('/'),
         ];
     }
-    
+
     /**
      * Calculate global statistics by aggregating across all students.
      */
@@ -42,13 +50,13 @@ class AccountantResource extends Resource
     {
         // 1. Get raw data needed for calculation (requires fetching data due to accessors)
         $students = Student::get(['id', 'balance', 'price_per_session']);
-        
+
         // 2. Aggregate unpaid attendance sessions (requires one DB query)
         $totalUnpaidSessions = Attendance::where('status', 'approved')
             ->where('payment_status', 'unpaid')
             // ->where('session_status', '!=', 'absent')
             ->sum('duration');
-            
+
         // 3. Initialize sums
         $totalRawDebt = 0.00;
         $totalCreditBalance = 0.00;
@@ -64,7 +72,7 @@ class AccountantResource extends Resource
             // A more complex query involving JOIN and SUM on the Attendances table would be better,
             // but for simplicity and to stay within constraints, we will calculate based on a simplified model 
             // if full attendance data cannot be loaded efficiently here.
-            
+
             // For the global stats, we'll calculate based on the Student model's total debt:
             $unpaidCount = $student->unpaid_sessions_count; // This still works, but runs a query per student (less performant)
             $totalRawDebt += $unpaidCount * (float) $student->price_per_session;
@@ -89,8 +97,14 @@ class AccountantResource extends Resource
         return $table
             ->header(static::renderStatsHeader($stats))
             ->columns([
-                TextColumn::make( 'full_name')->label('Student Name')->searchable(),
+                TextColumn::make('Roll No.')->label('Roll No.')->rowIndex(),
+                TextColumn::make('full_name')->label('Student Name')->searchable(),
+                TextColumn::make('price_per_session')
+                    ->label('Price Per Session')
+                    ->money('ETB'),
 
+                TextColumn::make('sessions_per_period')
+                    ->label('Session Per Period'),
                 TextColumn::make('unpaid_sessions_count')
                     ->label('Unpaid Sessions'),
 
@@ -102,28 +116,69 @@ class AccountantResource extends Resource
                 TextColumn::make('balance')
                     ->label('Credit Balance')
                     ->money('ETB', 0)
-                    ->color(fn (float $state): string => $state > 0 ? 'success' : 'gray')
+                    ->color(fn(float $state): string => $state > 0 ? 'success' : 'gray')
                     ->description('Pre-paid amount (credit).'),
-                    
+
                 TextColumn::make('total_due')
                     ->label('Total Amount Due (Net)')
                     ->money('ETB', 0)
                     // Display absolute value
-                    ->getStateUsing(fn (Student $record): float => abs($record->total_due))
+                    ->getStateUsing(fn(Student $record): float => abs($record->total_due))
                     // Color based on the signed value
-                    ->color(fn (Student $record): string => $record->total_due > 0 ? 'danger' : 'success')
+                    ->color(fn(Student $record): string => $record->total_due > 0 ? 'danger' : 'success')
                     ->description('Net financial position'),
-                    
+
                 TextColumn::make('period_total')
                     ->label('Period Total (Full)')
-                    ->money('ETB', 0), 
+                    ->money('ETB', 0),
+                    TextColumn::make('parent.phone')
+                    ->label('Parent Phone')
+                    ->searchable()
+                    ->sortable()
+                    ->tooltip('Phone number of the associated parent user record.'),
+            ])
+            ->filters([
+                // 1. Simple Filter for a database column
+                SelectFilter::make('sessions_per_period')
+                    ->label('Sessions per Period')
+                    ->options(Student::distinct()->pluck('sessions_per_period', 'sessions_per_period'))
+                    ->default(null),
+                
+                // 2. Custom Ternary Filter for Full Period Debt
+                TernaryFilter::make('full_period_debt')
+                    ->label('Full Period Debt Status')
+                    ->placeholder('Show All')
+                    ->default(null)
+                    ->falseLabel('Less than Full Period Debt')
+                    ->trueLabel('Has Full Period Debt')
+                    ->queries(
+                        true: function (Builder $query) {
+                            // Filter where Unpaid Sessions Count == sessions_per_period
+                            return $query->whereRaw('
+                                (SELECT COALESCE(SUM(duration), 0) FROM attendances 
+                                 WHERE student_id = students.id 
+                                 AND status = "approved" 
+                                 AND payment_status = "unpaid") >= students.sessions_per_period
+                            ');
+                        },
+                        false: function (Builder $query) {
+                            // Filter where Unpaid Sessions Count < sessions_per_period
+                            return $query->whereRaw('
+                                (SELECT COALESCE(SUM(duration), 0) FROM attendances 
+                                 WHERE student_id = students.id 
+                                 AND status = "approved" 
+                                 AND payment_status = "unpaid") < students.sessions_per_period
+                            ');
+                        },
+                        blank: null,
+                    ),
             ])
             ->actions([
                 Action::make('makePayment')
                     ->label('Record Payment')
                     ->icon('heroicon-o-credit-card')
                     ->button()
-                    ->modalHeading(fn (Student $record) => "Record Payment for {$record->full_name}")
+                    ->modalHeading(fn(Student $record) => "Record Payment for {$record->full_name}")
                     ->form([
                         TextInput::make('amount')
                             ->label('Payment Amount (ETB)')
@@ -132,7 +187,7 @@ class AccountantResource extends Resource
                             ->default(0.00)
                             ->minValue(0.00)
                             ->placeholder('e.g., 5000.00'),
-                        
+
                         TextInput::make('note')
                             ->label('Payment Note (Optional)')
                             ->nullable()
@@ -140,23 +195,23 @@ class AccountantResource extends Resource
                     ])
                     ->action(function (Student $record, array $data, PaymentService $paymentService) {
                         $payment = $paymentService->applyPayment(
-                            $record, 
-                            (float)$data['amount'],
+                            $record,
+                            (float) $data['amount'],
                             $data['note'] ?? null
                         );
 
                         if (!$payment) {
-                             return \Filament\Notifications\Notification::make()
+                            return \Filament\Notifications\Notification::make()
                                 ->title('Payment Failed')
                                 ->body('Could not process payment. Check if session price is set.')
                                 ->danger()
                                 ->send();
                         }
-                        
+
                         $appliedCount = count($payment->covered_sessions);
                         $applied = number_format($payment->amount_applied, 2);
                         $credit = number_format($payment->amount_credit, 2);
-                        
+
                         $body = "Covered **{$appliedCount}** sessions (ETB {$applied} applied to debt). Added ETB {$credit} to credit. New balance: ETB " . number_format($payment->balance_after, 2) . ".";
 
                         return \Filament\Notifications\Notification::make()

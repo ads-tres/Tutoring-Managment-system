@@ -96,8 +96,6 @@ class Student extends Model
         return $this->attendances()
             ->where('status', 'approved')
             ->where('payment_status', 'unpaid')
-            // ->where('session_status', '!=', 'absent')
-            // ->count(); 
             ->sum('duration');
     }
     

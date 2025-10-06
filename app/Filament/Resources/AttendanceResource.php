@@ -183,6 +183,7 @@ class AttendanceResource extends Resource
 
         return $table
             ->columns([
+                Tables\Columns\TextColumn::make('Roll No.')->label('Roll No.')->rowIndex(),
                 Tables\Columns\TextColumn::make('student.full_name')
                     ->label('Student')
                     ->sortable()
@@ -405,10 +406,7 @@ class AttendanceResource extends Resource
                 ]),
             ])
             ->headerActions([
-                // Standard Create Action (Visibility remains, but is globally restricted by canCreate())
-                CreateAction::make()
-                    ->visible($isManager)
-                    ->label('Add New Record'),
+                   
 
                 // Tutor "Fill Daily Attendance" Action (kept for tutors)
                 Tables\Actions\Action::make('fill_daily_attendance')
