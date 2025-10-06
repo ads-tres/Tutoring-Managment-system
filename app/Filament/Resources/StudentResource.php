@@ -45,7 +45,7 @@ class StudentResource extends Resource
         // Managers, and other roles see all students.
         return Student::query();
     }
-    
+
     /**
      * Defines the form schema for the student resource.
      */
@@ -86,7 +86,7 @@ class StudentResource extends Resource
                         ->searchable()
                         ->visible(fn() => Auth::user()->hasRole('manager')),
                     Forms\Components\Select::make('tutor_id')
-                        ->relationship('tutor', 'name', fn (Builder $query) => $query->whereHas('roles', fn ($q) => $q->where('name', 'tutor')))
+                        ->relationship('tutor', 'name', fn(Builder $query) => $query->whereHas('roles', fn($q) => $q->where('name', 'tutor')))
                         ->label('Tutor Account')
                         ->searchable()
                         ->preload()
@@ -119,7 +119,7 @@ class StudentResource extends Resource
                     Forms\Components\TextInput::make('street')->maxLength(255),
                     Forms\Components\TextInput::make('landmark')->maxLength(255),
 
-                    
+
                     Fieldset::make('Map Location')
                         ->schema([
                             Forms\Components\TextInput::make('map_location')
@@ -129,7 +129,7 @@ class StudentResource extends Resource
                                 ->nullable()
                                 ->maxLength(500),
                         ])->columns(1),
-                    
+
                 ])->columns(2),
 
             Forms\Components\Section::make('School & Session Details')
@@ -152,9 +152,6 @@ class StudentResource extends Resource
                         ])
                         ->default('active')
                         ->visible(fn() => Auth::user()->hasRole('manager')),
-                    Forms\Components\TextInput::make('payment_status')
-                        ->maxLength(255)
-                        ->visible(fn() => Auth::user()->hasRole('manager')),
                     Forms\Components\TextInput::make('frequency')
                         ->label('Frequency (sessions per week)')
                         ->numeric()
@@ -175,7 +172,7 @@ class StudentResource extends Resource
                         ])
                         ->required()
                         ->rules([
-                            fn (Forms\Get $get): Closure =>
+                            fn(Forms\Get $get): Closure =>
                             function (string $attribute, $value, Closure $fail) use ($get) {
                                 if (count($value) !== (int) $get('frequency')) {
                                     $fail("You must select exactly {$get('frequency')} days.");
@@ -195,7 +192,7 @@ class StudentResource extends Resource
                         ->label('Price Per Session')
                         ->numeric()
                         ->required()
-                        ->visible(fn() => Auth::user()->hasRole('manager','parent')),
+                        ->visible(fn() => Auth::user()->hasRole('manager', 'web')),
 
                 ])->columns(2),
         ]);
@@ -227,8 +224,8 @@ class StudentResource extends Resource
                 Tables\Columns\TextColumn::make('house_number')->label('House #')->searchable()->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('street')->searchable()->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('landmark')->searchable()->toggleable(isToggledHiddenByDefault: true),
-                
-                
+
+
                 Tables\Columns\TextColumn::make('map_location')
                     ->label('Map Link')
                     ->badge()
@@ -250,7 +247,7 @@ class StudentResource extends Resource
                         return 'https://www.google.com/maps/search/?api=1&query=' . urlencode($location);
                     })
                     // Only show 'View on Map' if the field is populated
-                    ->formatStateUsing(fn (?string $state) => $state ? 'View on Map' : null)
+                    ->formatStateUsing(fn(?string $state) => $state ? 'View on Map' : null)
                     ->toggleable(),
                 // ------------------------------------------
 
@@ -269,14 +266,13 @@ class StudentResource extends Resource
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->visible(fn() => !Auth::user()->hasRole('tutor')),
-                Tables\Columns\TextColumn::make('payment_status')
-                    ->badge()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true)
-                    ->visible(fn() => !Auth::user()->hasRole('tutor')),
                 Tables\Columns\TextColumn::make('created_at')->dateTime()->since()->sortable()->toggleable(isToggledHiddenByDefault: true),
-                
+
                 // --- FINANCIAL COLUMNS HIDING FOR TUTORS ---
+                Tables\Columns\TextColumn::make('price_per_session')
+                    ->label('Price Per Session')
+                    ->money('ETB')
+                    ->visible(fn() => !Auth::user()->hasRole('tutor')),
                 Tables\Columns\TextColumn::make('period_total')
                     ->label('Period Total')
                     ->money('ETB')
@@ -287,14 +283,19 @@ class StudentResource extends Resource
                     ->visible(fn() => !Auth::user()->hasRole('tutor')), // HIDE FOR TUTOR
 
                 Tables\Columns\TextColumn::make('total_due')
-                    ->label('Total Due')
-                    ->money('ETB')
+                    ->label('Total Amount Due (Net)')
+                    ->money('ETB', 0)
+                    // Use getStateUsing to return the absolute value for display
+                    ->getStateUsing(fn(Student $record): float => abs($record->total_due))
+                    // Use the original total_due value from the record for coloring
+                    ->color(fn(Student $record): string => $record->total_due > 0 ? 'danger' : 'success')
+                    ->description('Net financial position')
                     ->visible(fn() => !Auth::user()->hasRole('tutor')), // HIDE FOR TUTOR
                 // ------------------------------------------
 
-                Tables\Columns\TextColumn::make('total_completed_sessions')
-                    ->label('Total Completed Sessions'),
-                
+                // Tables\Columns\TextColumn::make('total_completed_sessions')
+                //     ->label('Total Completed Sessions'),
+
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
@@ -430,7 +431,7 @@ class StudentResource extends Resource
                         if (!array_key_exists('students', $data)) {
                             return;
                         }
-                        
+
                         $studentsData = $data['students'];
                         foreach ($studentsData as $sessionData) {
                             $student = Student::find($sessionData['student_id']);
@@ -466,7 +467,7 @@ class StudentResource extends Resource
                     ->modalCancelActionLabel('Cancel'),
             ]);
     }
-    
+
     /**
      * Defines the relations for the student resource.
      */
@@ -474,10 +475,10 @@ class StudentResource extends Resource
     {
         return [
             AttendancesRelationManager::class,
-            
+
         ];
     }
-    
+
     /**
      * Defines the pages for the student resource.
      */
@@ -491,8 +492,8 @@ class StudentResource extends Resource
 
         ];
 
-        
+
     }
 
-    
+
 }

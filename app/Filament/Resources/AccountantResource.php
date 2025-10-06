@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Models\Student;
+use App\Models\Attendance;
 use App\Services\PaymentService;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
@@ -24,7 +25,6 @@ class AccountantResource extends Resource
 
     public static function canViewAny(): bool
     {
-        // We assume the User model has the Spatie\Permission HasRoles trait for hasAnyRole()
         return Auth::user() && Auth::user()->hasAnyRole(['accountant', 'manager']);
     }
 
@@ -34,10 +34,60 @@ class AccountantResource extends Resource
             'index' => Pages\ListAccountants::route('/'),
         ];
     }
+    
+    /**
+     * Calculate global statistics by aggregating across all students.
+     */
+    protected static function getGlobalStats(): array
+    {
+        // 1. Get raw data needed for calculation (requires fetching data due to accessors)
+        $students = Student::get(['id', 'balance', 'price_per_session']);
+        
+        // 2. Aggregate unpaid attendance sessions (requires one DB query)
+        $totalUnpaidSessions = Attendance::where('status', 'approved')
+            ->where('payment_status', 'unpaid')
+            // ->where('session_status', '!=', 'absent')
+            ->sum('duration');
+            
+        // 3. Initialize sums
+        $totalRawDebt = 0.00;
+        $totalCreditBalance = 0.00;
+
+        // 4. Calculate Raw Debt and Total Credit via iteration
+        foreach ($students as $student) {
+            // Note: We can't use $student->unpaid_sessions_count directly here 
+            // without complex queries, so we rely on the total count from step 2 for the header,
+            // and use the individual calculation for debt based on price_per_session.
+
+            // Since we can't efficiently calculate individual unpaid sessions without loading all attendances, 
+            // we will use the total raw debt based on the existing balance logic for consistency.
+            // A more complex query involving JOIN and SUM on the Attendances table would be better,
+            // but for simplicity and to stay within constraints, we will calculate based on a simplified model 
+            // if full attendance data cannot be loaded efficiently here.
+            
+            // For the global stats, we'll calculate based on the Student model's total debt:
+            $unpaidCount = $student->unpaid_sessions_count; // This still works, but runs a query per student (less performant)
+            $totalRawDebt += $unpaidCount * (float) $student->price_per_session;
+            $totalCreditBalance += (float) $student->balance;
+        }
+
+        // Calculate final net debt
+        $totalNetDue = $totalRawDebt - $totalCreditBalance;
+
+        return [
+            'totalUnpaidSessions' => $totalUnpaidSessions,
+            'totalRawDebt' => $totalRawDebt,
+            'totalCreditBalance' => $totalCreditBalance,
+            'totalNetDue' => $totalNetDue,
+        ];
+    }
 
     public static function table(Table $table): Table
     {
+        $stats = static::getGlobalStats();
+
         return $table
+            ->header(static::renderStatsHeader($stats))
             ->columns([
                 TextColumn::make( 'full_name')->label('Student Name')->searchable(),
 
@@ -55,12 +105,14 @@ class AccountantResource extends Resource
                     ->color(fn (float $state): string => $state > 0 ? 'success' : 'gray')
                     ->description('Pre-paid amount (credit).'),
                     
-                // Use absolute value for display, but the accessor calculates debt-credit
-                TextColumn::make('total_due') 
+                TextColumn::make('total_due')
                     ->label('Total Amount Due (Net)')
                     ->money('ETB', 0)
-                    ->color(fn (float $state): string => $state > 0 ? 'danger' : 'success')
-                    ->description('Debt outstanding after applying credit.'),
+                    // Display absolute value
+                    ->getStateUsing(fn (Student $record): float => abs($record->total_due))
+                    // Color based on the signed value
+                    ->color(fn (Student $record): string => $record->total_due > 0 ? 'danger' : 'success')
+                    ->description('Net financial position'),
                     
                 TextColumn::make('period_total')
                     ->label('Period Total (Full)')
@@ -114,5 +166,17 @@ class AccountantResource extends Resource
                             ->send();
                     }),
             ]);
+    }
+
+    /**
+     * Renders the global statistics overview panel.
+     */
+    protected static function renderStatsHeader(array $stats): \Illuminate\View\View
+    {
+        $netDueColor = $stats['totalNetDue'] > 0 ? 'text-red-600' : 'text-green-600';
+        $netDueLabel = $stats['totalNetDue'] > 0 ? 'Total Net Debt' : 'Total Net Credit';
+        $netDueValue = number_format(abs($stats['totalNetDue']), 2);
+
+        return view('filament.components.stat-summary', compact('stats', 'netDueColor', 'netDueLabel', 'netDueValue'));
     }
 }
