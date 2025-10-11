@@ -29,6 +29,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
+use Illuminate\Support\Facades\Blade;
+use Barryvdh\DomPDF\Facade\Pdf;
+
 
 class AttendanceResource extends Resource
 {
@@ -406,7 +409,27 @@ class AttendanceResource extends Resource
                 ]),
             ])
             ->headerActions([
-                   
+                 //  PDF DOWNLOAD ACTION
+            Tables\Actions\Action::make('download_pdf')
+            ->label('Download PDF Report')
+            ->icon('heroicon-o-document-text')
+            ->color('info')
+           
+            ->visible(fn() => $isManager || $isParent) 
+            ->action(function () {
+                // 1. Get the data from the current query (honors the role-based filtering in getEloquentQuery())
+                $records = static::getEloquentQuery()->get();
+
+                // 2. Load the Blade view and pass the data
+                $pdf = Pdf::loadView('pdf.attendance-report', ['attendances' => $records]);
+
+                // 3. Stream the PDF download
+                return response()->streamDownload(function () use ($pdf) {
+                    echo $pdf
+                        ->setPaper('a4', 'portrait')
+                        ->stream();
+                }, 'attendance-report-' . now()->format('YmdHis') . '.pdf');
+            }),
 
                 // Tutor "Fill Daily Attendance" Action (kept for tutors)
                 Tables\Actions\Action::make('fill_daily_attendance')
@@ -547,6 +570,8 @@ class AttendanceResource extends Resource
                     ->modalWidth('2xl')
                     ->modalSubmitActionLabel('Save Attendance')
                     ->modalCancelActionLabel('Cancel'),
+
+                    
             ]);
     }
 

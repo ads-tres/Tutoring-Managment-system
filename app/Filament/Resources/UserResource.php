@@ -24,7 +24,28 @@ class UserResource extends Resource
         return $form
             ->schema([
                 Forms\Components\TextInput::make('name')->label('First Name')->required(),
-                Forms\Components\TextInput::make('password')->label('Password')->required(),
+                Forms\Components\TextInput::make('password')
+                    ->label('Password')
+                    ->password()
+                    ->required(fn(string $operation): bool => $operation === 'create')
+                    ->dehydrateStateUsing(fn(string $state): string => filled($state) ? Hash::make($state) : $state)
+                    ->dehydrated(fn(?string $state): bool => filled($state))
+                    ->autocomplete('password')
+                    ->rule(
+                        fn(string $operation, Get $get) =>
+                        $operation === 'create' || filled($get('password')) ?
+                        'min:8' : ''
+                    )
+                    ->live(),
+
+                // CONFIRM PASSWORD FIELD 
+                Forms\Components\TextInput::make('password_confirmation')
+                    ->label('Confirm Password')
+                    ->password()
+                    ->required(fn(string $operation, Get $get): bool => $operation === 'create' || filled($get('password')))
+                    ->same('password')
+                    ->dehydrated(false)
+                    ->autocomplete('password'),
                 Forms\Components\TextInput::make('middle_name')->label('Middle Name'),
                 Forms\Components\TextInput::make('last_name')->label('Last Name')->required(),
                 Forms\Components\TextInput::make('email')
